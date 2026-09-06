@@ -1,0 +1,324 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hive}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hive}
+      POSTGRES_DB: ${POSTGRES_DB:-hive}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  airflow-db-init:
+    image: postgres:16-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: []
+    command:
+      - /bin/sh
+      - -c
+      - >-
+        export PGPASSWORD="$${POSTGRES_PASSWORD}";
+        if psql -h postgres -v ON_ERROR_STOP=1 -U "$${POSTGRES_USER}"
+        -d "$${POSTGRES_DB}" -tAc
+        "SELECT 1 FROM pg_database WHERE datname = '$${AIRFLOW_DB_NAME}'"
+        | grep -q 1; then exit 0; fi;
+        psql -h postgres -v ON_ERROR_STOP=1 -U "$${POSTGRES_USER}"
+        -d "$${POSTGRES_DB}" -c "CREATE DATABASE $${AIRFLOW_DB_NAME}"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hive}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hive}
+      AIRFLOW_DB_NAME: ${AIRFLOW_DB_NAME:-airflow}
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_PROMETHEUS_AUTH_TYPE: public
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD}
+      && mc mb --ignore-existing local/warehouse
+      && mc mb --ignore-existing local/raw"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+
+  hive-metastore:
+    build:
+      context: .
+      dockerfile: hive/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      SERVICE_NAME: metastore
+      DB_DRIVER: postgres
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      SERVICE_OPTS: >-
+        -Djavax.jdo.option.ConnectionDriverName=org.postgresql.Driver
+        -Djavax.jdo.option.ConnectionURL=jdbc:postgresql://postgres:5432/hive
+        -Djavax.jdo.option.ConnectionUserName=${POSTGRES_USER:-hive}
+        -Djavax.jdo.option.ConnectionPassword=${POSTGRES_PASSWORD:-hive}
+        -Dfs.s3a.endpoint=http://minio:9000
+        -Dfs.s3a.aws.credentials.provider=com.amazonaws.auth.EnvironmentVariableCredentialsProvider
+        -Dfs.s3a.endpoint.region=us-east-1
+        -Dfs.s3a.path.style.access=true
+        -Dfs.s3a.connection.ssl.enabled=false
+        -Dfs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem
+    command:
+      - /bin/bash
+      - -c
+      - >-
+        schematool -dbType postgres -initSchema --verbose || true;
+        hive --service metastore
+    ports:
+      - "9083:9083"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9083'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  spark-master:
+    build:
+      context: .
+      dockerfile: spark/Dockerfile
+    restart: unless-stopped
+    user: "0:0"
+    environment:
+      PYSPARK_PYTHON: /opt/conda/bin/python
+      PYSPARK_DRIVER_PYTHON: /opt/conda/bin/python
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+      --host spark-master --port 7077 --webui-port 8080
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8080'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    ports:
+      - "7077:7077"
+      - "8080:8080"
+
+  spark-worker:
+    build:
+      context: .
+      dockerfile: spark/Dockerfile
+    restart: unless-stopped
+    user: "0:0"
+    environment:
+      PYSPARK_PYTHON: /opt/conda/bin/python
+      PYSPARK_DRIVER_PYTHON: /opt/conda/bin/python
+    depends_on:
+      spark-master:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+      hive-metastore:
+        condition: service_healthy
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
+      spark://spark-master:7077
+      --cores ${SPARK_WORKER_CORES:-4}
+      --memory ${SPARK_WORKER_MEMORY:-4G}
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8081'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    ports:
+      - "8081:8081"
+
+  jupyter:
+    build:
+      context: .
+      dockerfile: jupyter/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      spark-worker:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+      hive-metastore:
+        condition: service_healthy
+    environment:
+      JUPYTER_TOKEN: ${JUPYTER_TOKEN:-local}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      AWS_ENDPOINT_URL: http://minio:9000
+    ports:
+      - "8888:8888"
+      - "4040:4040"
+    volumes:
+      - ./notebooks:/home/jovyan/work
+      - ./spark-apps:/opt/spark-apps:ro
+
+  airflow:
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
+    restart: unless-stopped
+    user: "0:0"
+    depends_on:
+      spark-master:
+        condition: service_healthy
+      spark-worker:
+        condition: service_healthy
+      hive-metastore:
+        condition: service_healthy
+      airflow-db-init:
+        condition: service_completed_successfully
+      statsd-exporter:
+        condition: service_started
+    command:
+      - bash
+      - -c
+      - >-
+        exec su airflow -s /bin/bash -c
+        "airflow db migrate;
+        if ! airflow users list --output json | grep -q '$${AIRFLOW_ADMIN_USERNAME}';
+        then airflow users create
+        --username '$${AIRFLOW_ADMIN_USERNAME}'
+        --password '$${AIRFLOW_ADMIN_PASSWORD}'
+        --firstname Airflow
+        --lastname Admin
+        --role Admin
+        --email airflow@localhost;
+        fi;
+        exec airflow standalone"
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-hive}:${POSTGRES_PASSWORD:-hive}@postgres:5432/${AIRFLOW_DB_NAME:-airflow}
+      AIRFLOW_ADMIN_USERNAME: ${AIRFLOW_ADMIN_USERNAME:-airflow}
+      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-airflow}
+      AIRFLOW__METRICS__STATSD_ON: "true"
+      AIRFLOW__METRICS__STATSD_HOST: statsd-exporter
+      AIRFLOW__METRICS__STATSD_PORT: "9125"
+      AIRFLOW__METRICS__STATSD_PREFIX: airflow
+      AIRFLOW__WEBSERVER__WEB_SERVER_PORT: "8080"
+      AIRFLOW__WEBSERVER__WORKERS: "1"
+    ports:
+      - "8088:8080"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2)"
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    volumes:
+      - airflow-data:/opt/airflow/data
+
+  statsd-exporter:
+    image: prom/statsd-exporter:v0.28.0
+    restart: unless-stopped
+    command:
+      - --statsd.listen-udp=:9125
+      - --web.listen-address=:9102
+    ports:
+      - "9102:9102"
+
+  trino:
+    build:
+      context: .
+      dockerfile: trino/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      hive-metastore:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "8082:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/v1/info >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  prometheus:
+    build:
+      context: .
+      dockerfile: monitoring/Dockerfile
+    restart: unless-stopped
+    user: "0:0"
+    depends_on:
+      - spark-master
+      - spark-worker
+      - jupyter
+      - statsd-exporter
+    ports:
+      - "9090:9090"
+    volumes:
+      - prometheus-data:/prometheus
+
+  grafana:
+    build:
+      context: .
+      dockerfile: monitoring/grafana/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+      - trino
+      - statsd-exporter
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: trino-datasource
+      GF_PATHS_PLUGINS: /usr/share/grafana/plugins
+      POSTGRES_USER: ${POSTGRES_USER:-hive}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hive}
+    volumes:
+      - grafana-data:/var/lib/grafana
+
+volumes:
+  postgres-data:
+  minio-data:
+  prometheus-data:
+  grafana-data:
+  airflow-data:

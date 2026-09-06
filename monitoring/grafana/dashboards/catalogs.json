@@ -1,0 +1,26 @@
+{
+  "id": null,
+  "uid": "spark-catalogs",
+  "title": "Spark catalogs",
+  "tags": ["spark", "catalog", "hive", "delta"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "table",
+      "title": "Registered databases",
+      "datasource": {"type": "postgres", "uid": "hive-metastore"},
+      "targets": [{"format": "table", "rawSql": "SELECT \"DB_ID\" AS id, \"NAME\" AS database, COALESCE(\"DB_LOCATION_URI\", '') AS location FROM \"DBS\" ORDER BY \"NAME\";", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+    },
+    {
+      "type": "table",
+      "title": "Existing catalog tables",
+      "datasource": {"type": "postgres", "uid": "hive-metastore"},
+      "targets": [{"format": "table", "rawSql": "SELECT d.\"NAME\" AS database, t.\"TBL_NAME\" AS table_name, t.\"TBL_TYPE\" AS table_type, COALESCE(s.\"LOCATION\", '') AS location FROM \"TBLS\" t JOIN \"DBS\" d ON d.\"DB_ID\" = t.\"DB_ID\" LEFT JOIN \"SDS\" s ON s.\"SD_ID\" = t.\"SD_ID\" ORDER BY d.\"NAME\", t.\"TBL_NAME\";", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+    }
+  ]
+}

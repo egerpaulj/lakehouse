@@ -1,0 +1,24 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: spark-master
+    metrics_path: /metrics/prometheus
+    static_configs:
+      - targets: ["spark-master:8080"]
+  - job_name: spark-worker
+    metrics_path: /metrics/prometheus
+    static_configs:
+      - targets: ["spark-worker:8081"]
+  - job_name: spark-driver
+    metrics_path: /metrics/prometheus/
+    static_configs:
+      - targets: ["jupyter:4040"]
+  - job_name: minio
+    metrics_path: /minio/v2/metrics/cluster
+    static_configs:
+      - targets: ["minio:9000"]
+  - job_name: airflow
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["statsd-exporter:9102"]

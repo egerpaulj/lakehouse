@@ -1,0 +1,81 @@
+{
+  "id": null,
+  "uid": "catalog-data-trino",
+  "title": "Catalog data (Trino)",
+  "tags": ["trino", "delta", "catalog"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "People rows",
+      "datasource": {"type": "trino-datasource", "uid": "trino"},
+      "targets": [
+        {
+          "format": "table",
+          "rawSQL": "SELECT count(*) AS people_rows FROM lakehouse.catalog_examples.people",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0}
+    },
+    {
+      "type": "stat",
+      "title": "Teams",
+      "datasource": {"type": "trino-datasource", "uid": "trino"},
+      "targets": [
+        {
+          "format": "table",
+          "rawSQL": "SELECT count(DISTINCT team) AS teams FROM lakehouse.catalog_examples.people",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0}
+    },
+    {
+      "type": "barchart",
+      "title": "People by team",
+      "datasource": {"type": "trino-datasource", "uid": "trino"},
+      "targets": [
+        {
+          "format": "table",
+          "rawSQL": "SELECT team, count(*) AS people FROM lakehouse.catalog_examples.people GROUP BY team ORDER BY people DESC",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "options": {"orientation": "horizontal", "xTickLabelRotation": 0, "xTickLabelSpacing": 100},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+    },
+    {
+      "type": "table",
+      "title": "People in the catalog",
+      "datasource": {"type": "trino-datasource", "uid": "trino"},
+      "targets": [
+        {
+          "format": "table",
+          "rawSQL": "SELECT id, name, team FROM lakehouse.catalog_examples.people ORDER BY id",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+    },
+    {
+      "type": "table",
+      "title": "Delta tables visible to Trino",
+      "datasource": {"type": "trino-datasource", "uid": "trino"},
+      "targets": [
+        {
+          "format": "table",
+          "rawSQL": "SELECT table_schema AS schema_name, table_name, table_type FROM lakehouse.information_schema.tables WHERE table_schema = 'catalog_examples' ORDER BY table_name",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+    }
+  ]
+}

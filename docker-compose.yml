@@ -99,12 +99,19 @@ services:
         -Dfs.s3a.path.style.access=true
         -Dfs.s3a.connection.ssl.enabled=false
         -Dfs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem
-    command:
+    entrypoint:
       - /bin/bash
       - -c
+    command:
       - >-
-        schematool -dbType postgres -initSchema --verbose || true;
-        hive --service metastore
+        export HIVE_CONF_DIR=/opt/hive/conf;
+        export HADOOP_CLIENT_OPTS="$${SERVICE_OPTS}";
+        if schematool -dbType postgres -info >/dev/null 2>&1; then
+          echo 'Hive schema already initialized';
+        else
+          schematool -dbType postgres -initSchema --verbose;
+        fi;
+        exec hive --skiphadoopversion --skiphbasecp --service metastore
     ports:
       - "9083:9083"
     healthcheck:

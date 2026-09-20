@@ -36,7 +36,7 @@ scripts/./start.sh
 | MinIO API / console | http://localhost:9000 / http://localhost:9001 | `minioadmin` / `minioadmin` |
 | Jupyter | http://localhost:8888 | token `local` |
 | Prometheus | http://localhost:9090 | - |
-| Grafana | http://localhost:3000 | `admin` / `admin` |
+| Grafana | http://localhost:3001 | `admin` / `admin` |
 | Trino | http://localhost:8082 | - |
 | Airflow | http://localhost:8088 | `airflow` / `airflow`|
 

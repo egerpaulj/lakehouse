@@ -10,6 +10,14 @@ scrape_configs:
     metrics_path: /metrics/prometheus
     static_configs:
       - targets: ["spark-worker:8081"]
+  - job_name: spark-worker-2
+    metrics_path: /metrics/prometheus
+    static_configs:
+      - targets: ["spark-worker-2:8081"]
+  - job_name: spark-worker-3
+    metrics_path: /metrics/prometheus
+    static_configs:
+      - targets: ["spark-worker-3:8081"]
   - job_name: spark-driver
     metrics_path: /metrics/prometheus/
     static_configs:

@@ -1,0 +1,19 @@
+# Each entry configures one independently scheduled instance of the
+# mongo_catalog_sync Spark app (airflow/dags/mongo_catalog_sync.py).
+# Add or remove entries to add/remove scheduled sync jobs; no code changes
+# needed. Required keys: name, mongo_database, mongo_collection,
+# catalog_database, catalog_table, schedule. Optional keys: mongo_uri
+# (defaults to mongodb://mongo:27017 or $MONGO_URI), batch_limit, dry_run.
+jobs:
+  - name: orders
+    mongo_database: app
+    mongo_collection: orders
+    catalog_database: mongo_sync
+    catalog_table: orders
+    schedule: "@hourly"
+  - name: events
+    mongo_database: app
+    mongo_collection: events
+    catalog_database: mongo_sync
+    catalog_table: events
+    schedule: "*/15 * * * *"

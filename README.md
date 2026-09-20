@@ -10,6 +10,8 @@ The components used are:
 * MinIO as S3-compatible object storage (`warehouse` and `raw` buckets).
 * Prometheus scraping Spark JVM metrics and Grafana with a provisioned dashboard.
 * Airflow scheduling the catalog IO Spark app hourly, with StatsD metrics exported to Prometheus.
+* Airflow scheduling configurable MongoDB-to-Delta-catalog sync jobs (multiple
+  independently scheduled instances driven by a YAML config).
 * Trino querying Delta tables through the Hive Metastore, with a Grafana Trino dashboard.
 * Jupyter/PySpark with the same Delta, S3A, and Hive configuration.
 
@@ -144,6 +146,9 @@ share Spark 3.5.3 and Python 3.11.10.
 | AWS SDK (Hive) | 1.11.271 | Downloaded from Maven Central during image build |
 | WildFly OpenSSL | 1.0.7.Final | Added to Spark, Jupyter, and Hive images |
 | PostgreSQL JDBC | 42.7.4 | Added to the Hive image |
+| MongoDB Spark Connector | 10.4.1 | `org.mongodb.spark:mongo-spark-connector_2.12:10.4.1`; downloaded from Maven Central during the Spark/Airflow image build |
+| MongoDB Java driver (sync/core/bson) | 5.1.1 | Transitive dependencies of the Spark connector; downloaded from Maven Central during the Spark/Airflow image build |
+| pymongo | 4.9.2 | Added to the Spark and Airflow images for the delete-after-sync step |
 | PostgreSQL | 16-alpine | `postgres:16-alpine` |
 | Prometheus | 2.53.5 | `prom/prometheus:v2.53.5` |
 | Grafana | 11.4.0 | `grafana/grafana:11.4.0` |
@@ -175,6 +180,9 @@ and AWS SDK versions; each classpath is pinned as shown above.
 Example spark apps:
 - spark-apps/catalog_io.py (uses hive catalog)
 - spark-apps/delta_io.py (direct access mini-io `s3a://`)
+- spark-apps/mongo_catalog_sync.py (reads a MongoDB collection, appends it to
+  the Delta catalog, then deletes the synced documents; see
+  [Airflow](#mongodb-to-catalog-sync-jobs) below for scheduling)
 
 The catalog examples:
 
@@ -223,6 +231,70 @@ and scraped by Prometheus. The provisioned **Airflow overview** dashboard is
 available in Grafana under the **Spark** folder.
 
 <img src='docs/airflow.png' width='800px' />
+
+### MongoDB to catalog sync jobs
+
+`spark-apps/mongo_catalog_sync.py` is a generic, configurable Spark app that:
+
+1. Ensures the target catalog database exists (creates it if missing).
+2. Reads all documents from a MongoDB collection.
+3. Appends them to a Delta catalog table (creating the table on first run).
+4. Deletes the exact documents that were read from MongoDB, by `_id`, so
+   documents inserted after the read started are left for the next run.
+
+`airflow/dags/mongo_catalog_sync.py` is a DAG factory that generates one
+Airflow DAG per entry in
+[`airflow/dags/mongo_catalog_sync_jobs.yaml`](/home/user/src/lakehouse/airflow/dags/mongo_catalog_sync_jobs.yaml).
+Each entry configures one independently scheduled instance:
+
+```yaml
+jobs:
+  - name: orders                 # DAG id becomes mongo_catalog_sync_orders
+    mongo_database: app
+    mongo_collection: orders
+    catalog_database: mongo_sync
+    catalog_table: orders
+    schedule: "@hourly"
+  - name: events
+    mongo_database: app
+    mongo_collection: events
+    catalog_database: mongo_sync
+    catalog_table: events
+    schedule: "*/15 * * * *"
+```
+
+To add a new scheduled job instance, add an entry to the YAML file; no
+Python changes are required. Supported keys are `name`, `mongo_database`,
+`mongo_collection`, `catalog_database`, `catalog_table`, `schedule`
+(a cron expression or Airflow preset such as `@hourly`), and the optional
+`mongo_uri`, `batch_limit`, and `dry_run`.
+
+This repository assumes MongoDB runs outside this Compose stack (for
+example, in its own container or a managed service). To reach it from
+`spark-worker` and `airflow`, either:
+
+* attach both services to the Docker network your MongoDB instance is on
+  (`docker network connect <network> lakehouse-spark-worker-1` and the
+  equivalent for `lakehouse-airflow-1`, or add a `networks:` entry to
+  `docker-compose.yml`), or
+* set `mongo_uri` in the YAML config (or the `MONGO_URI` environment
+  variable) to an address reachable from inside the containers, such as
+  `mongodb://host.docker.internal:27017`.
+
+Run a single sync manually with:
+
+```
+./scripts/run_mongo_catalog_sync.sh \
+  --mongo-uri mongodb://<host>:27017 \
+  --mongo-database app \
+  --mongo-collection orders \
+  --catalog-database mongo_sync \
+  --catalog-table orders
+```
+
+Use `--dry-run` to append to the catalog without deleting the source
+documents, and `--batch-limit N` to cap how many documents are processed in
+one run.
 
 
 ## Notes on locked down versions

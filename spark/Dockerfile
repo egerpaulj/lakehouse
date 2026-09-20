@@ -10,6 +10,7 @@ RUN cp /opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar /tmp/aws-java-sdk-bundle
     && chmod 644 /tmp/aws-java-sdk-bundle-1.12.262.jar \
     && mv /tmp/aws-java-sdk-bundle-1.12.262.jar /opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar
 COPY jars/wildfly-openssl-1.0.7.Final.jar /opt/spark/jars/
+RUN pip install --no-cache-dir pymongo==4.9.2
 ENV SPARK_DIST_CLASSPATH="/opt/spark/jars/*"
 COPY spark/conf/metrics.properties /opt/spark/conf/metrics.properties
 COPY spark-apps /opt/spark-apps

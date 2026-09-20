@@ -180,7 +180,7 @@ services:
       timeout: 5s
       retries: 12
     ports:
-      - "8081:8081"
+      - "8381:8081"
     networks:
       - development_network
 
@@ -211,7 +211,7 @@ services:
       timeout: 5s
       retries: 12
     ports:
-      - "8882:8081"
+      - "8382:8081"
     networks:
       - development_network
 

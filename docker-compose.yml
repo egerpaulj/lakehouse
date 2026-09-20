@@ -184,6 +184,68 @@ services:
     networks:
       - development_network
 
+  spark-worker-2:
+    build:
+      context: .
+      dockerfile: spark/Dockerfile
+    restart: unless-stopped
+    user: "0:0"
+    environment:
+      PYSPARK_PYTHON: /opt/conda/bin/python
+      PYSPARK_DRIVER_PYTHON: /opt/conda/bin/python
+    depends_on:
+      spark-master:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+      hive-metastore:
+        condition: service_healthy
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
+      spark://spark-master:7077
+      --cores ${SPARK_WORKER_CORES:-4}
+      --memory ${SPARK_WORKER_MEMORY:-4G}
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8081'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    ports:
+      - "8882:8081"
+    networks:
+      - development_network
+
+  spark-worker-3:
+    build:
+      context: .
+      dockerfile: spark/Dockerfile
+    restart: unless-stopped
+    user: "0:0"
+    environment:
+      PYSPARK_PYTHON: /opt/conda/bin/python
+      PYSPARK_DRIVER_PYTHON: /opt/conda/bin/python
+    depends_on:
+      spark-master:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+      hive-metastore:
+        condition: service_healthy
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
+      spark://spark-master:7077
+      --cores ${SPARK_WORKER_CORES:-4}
+      --memory ${SPARK_WORKER_MEMORY:-4G}
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8081'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    ports:
+      - "8883:8081"
+    networks:
+      - development_network
+
   jupyter:
     build:
       context: .

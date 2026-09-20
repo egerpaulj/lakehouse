@@ -5,15 +5,10 @@
 # catalog_database, catalog_table, schedule. Optional keys: mongo_uri
 # (defaults to mongodb://mongo:27017 or $MONGO_URI), batch_limit, dry_run.
 jobs:
-  - name: orders
-    mongo_database: app
-    mongo_collection: orders
-    catalog_database: mongo_sync
-    catalog_table: orders
+  - name: crawler_articles
+    mongo_uri: mongodb://mongodb:27017
+    mongo_database: Crawler
+    mongo_collection: crawler_responses_datalake
+    catalog_database: warehouse
+    catalog_table: crawler.responses.datalake.raw
     schedule: "@hourly"
-  - name: events
-    mongo_database: app
-    mongo_collection: events
-    catalog_database: mongo_sync
-    catalog_table: events
-    schedule: "*/15 * * * *"

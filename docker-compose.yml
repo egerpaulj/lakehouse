@@ -15,6 +15,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+    networks:
+      - development_network
 
   airflow-db-init:
     image: postgres:16-alpine
@@ -37,6 +39,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-hive}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hive}
       AIRFLOW_DB_NAME: ${AIRFLOW_DB_NAME:-airflow}
+    networks:
+      - development_network
 
   minio:
     image: minio/minio:latest
@@ -56,6 +60,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+    networks:
+      - development_network
 
   minio-init:
     image: minio/mc:latest
@@ -70,6 +76,8 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    networks:
+      - development_network
 
   hive-metastore:
     build:
@@ -119,6 +127,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
+    networks:
+      - development_network
 
   spark-master:
     build:
@@ -140,6 +150,8 @@ services:
     ports:
       - "7077:7077"
       - "8080:8080"
+    networks:
+      - development_network
 
   spark-worker:
     build:
@@ -169,6 +181,8 @@ services:
       retries: 12
     ports:
       - "8081:8081"
+    networks:
+      - development_network
 
   jupyter:
     build:
@@ -193,6 +207,8 @@ services:
     volumes:
       - ./notebooks:/home/jovyan/work
       - ./spark-apps:/opt/spark-apps:ro
+    networks:
+      - development_network
 
   airflow:
     build:
@@ -254,6 +270,8 @@ services:
       start_period: 30s
     volumes:
       - airflow-data:/opt/airflow/data
+    networks:
+      - development_network
 
   statsd-exporter:
     image: prom/statsd-exporter:v0.28.0
@@ -263,6 +281,8 @@ services:
       - --web.listen-address=:9102
     ports:
       - "9102:9102"
+    networks:
+      - development_network
 
   trino:
     build:
@@ -284,6 +304,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
+    networks:
+      - development_network
 
   prometheus:
     build:
@@ -300,6 +322,8 @@ services:
       - "9090:9090"
     volumes:
       - prometheus-data:/prometheus
+    networks:
+      - development_network
 
   grafana:
     build:
@@ -311,7 +335,7 @@ services:
       - trino
       - statsd-exporter
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
@@ -322,6 +346,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hive}
     volumes:
       - grafana-data:/var/lib/grafana
+    networks:
+      - development_network
 
 volumes:
   postgres-data:
@@ -329,3 +355,7 @@ volumes:
   prometheus-data:
   grafana-data:
   airflow-data:
+
+networks:
+  development_network:
+    external: true

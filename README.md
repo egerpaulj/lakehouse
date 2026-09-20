@@ -22,7 +22,7 @@ To run the example Jupyter notebooks, install `vscode` and install `Jupyter` ext
 
 ## Start the environment
 
-```
+```bash
 scripts/./start.sh
 ```
 
@@ -281,9 +281,15 @@ example, in its own container or a managed service). To reach it from
   variable) to an address reachable from inside the containers, such as
   `mongodb://host.docker.internal:27017`.
 
+Run via airflow:
+
+```bash
+docker compose up -d --build airflow
+```
+
 Run a single sync manually with:
 
-```
+```bash
 ./scripts/run_mongo_catalog_sync.sh \
   --mongo-uri mongodb://<host>:27017 \
   --mongo-database app \
@@ -367,7 +373,7 @@ scrapes the Spark web UIs and Grafana queries those metrics.
 
 ## Stop and troubleshooting
 
-```
+```bash
 docker compose ps
 docker compose logs hive-metastore spark-worker
 docker compose down

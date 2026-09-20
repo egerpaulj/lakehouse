@@ -88,12 +88,12 @@ def delete_synced_documents(mongo_uri: str, mongo_database: str, mongo_collectio
     client = MongoClient(mongo_uri)
     try:
         collection = client[mongo_database][mongo_collection]
-        object_ids = [ObjectId(oid) for oid in ids]
+        string_ids = [str(oid) for oid in ids]
         # Chunk deletes to keep the $in filter list a reasonable size.
         deleted = 0
         chunk_size = 1000
-        for start in range(0, len(object_ids), chunk_size):
-            chunk = object_ids[start : start + chunk_size]
+        for start in range(0, len(string_ids), chunk_size):
+            chunk = string_ids[start : start + chunk_size]
             result = collection.delete_many({"_id": {"$in": chunk}})
             deleted += result.deleted_count
         return deleted
@@ -103,7 +103,12 @@ def delete_synced_documents(mongo_uri: str, mongo_database: str, mongo_collectio
 
 def main(argv=None) -> None:
     args = parse_args(argv)
-    app_name = f"mongo-catalog-sync-{args.mongo_collection}-{args.catalog_table}"
+    # Hive/Delta table identifiers only allow letters, numbers, and
+    # underscores (even when quoted), so dots in a configured catalog table
+    # name (e.g. "crawler.responses.raw", used for readability) are
+    # normalized to underscores for the actual table name.
+    table_name = args.catalog_table.replace(".", "_")
+    app_name = f"mongo-catalog-sync-{args.mongo_collection}-{table_name}"
     spark = create_spark(app_name)
     try:
         ensure_catalog_database(spark, args.catalog_database, args.warehouse_root)
@@ -115,6 +120,7 @@ def main(argv=None) -> None:
             .option("collection", args.mongo_collection)
             .load()
         )
+
         if args.batch_limit:
             read_df = read_df.limit(args.batch_limit)
 
@@ -128,7 +134,7 @@ def main(argv=None) -> None:
         # struct with an "oid" field), so read it directly.
         source_ids = [row["id"] for row in read_df.select(F.col("_id").alias("id")).collect()]
 
-        full_table_name = f"spark_catalog.{args.catalog_database}.{args.catalog_table}"
+        full_table_name = f"spark_catalog.{args.catalog_database}.{table_name}"
         if spark.catalog.tableExists(full_table_name):
             read_df.write.format("delta").mode("append").saveAsTable(full_table_name)
         else:

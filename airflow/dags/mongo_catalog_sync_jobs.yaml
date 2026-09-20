@@ -9,6 +9,6 @@ jobs:
     mongo_uri: mongodb://mongodb:27017
     mongo_database: Crawler
     mongo_collection: crawler_responses_datalake
-    catalog_database: warehouse
-    catalog_table: crawler.responses.datalake.raw
+    catalog_database: crawler
+    catalog_table: responses_raw
     schedule: "@hourly"

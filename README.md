@@ -421,6 +421,7 @@ The Spark worker metrics are scraped by prometheus, and visualised by grafana.
 <img src='docs/spark_throughput_metrics.png' width='800px'/>
 
 Additionally, the MiniIo metrics is also scraped.
+
 <img src='docs/mini_io_metrics.png' width='800px'/>
 
 
@@ -448,3 +449,58 @@ Run the example first, then open Grafana and select the dashboard under the
 Airflow task dashboards in grafana
 
 <img src='docs/airflow_metrics.png' width='800px' />
+
+# Trino
+
+To query using Trino, start the Trino client:
+
+```bash
+docker compose exec trino trino
+```
+
+See below some example queries:
+
+- show catalogs;
+```
+ Catalog  
+-----------
+ jmx       
+ lakehouse 
+ memory    
+ system    
+ tpcds     
+ tpch      
+(6 rows)
+```
+
+- show schemas from lakehouse;
+```
+       Schema       
+--------------------
+ catalog_examples   
+ crawler            
+ default            
+ information_schema 
+(4 rows)
+
+```
+
+- show tables from lakehouse.crawler;
+```
+Table     
+---------------
+ responses_raw 
+(1 row)
+```
+
+- select *  from lakehouse.crawler.responses_raw;
+```
+       created       | updated |                                              uri                                               |                 _id                  | entities |          >
+ 2026.09.20:14:39:43 | NULL    | https://www.url    | bfe607a9-e00b-431f-a19b-d103f882ceee | NULL     | https://w>
+ 2026.09.20:14:39:44 | NULL    | https://www.url/fruit-farmers-pesticide | abebf43f-65da-49b7-9ceb-d5d0c2580e41 | NULL     | https://w>
+(2 rows)
+
+```
+
+
+

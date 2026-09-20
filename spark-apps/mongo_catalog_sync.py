@@ -21,6 +21,11 @@ import sys
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql import functions as F
+from pyspark.sql.types import NullType
+
+from bson import ObjectId
+from pymongo import MongoClient
 
 
 def create_spark(app_name: str) -> SparkSession:
@@ -82,8 +87,6 @@ def ensure_catalog_database(spark: SparkSession, catalog_database: str, warehous
 
 def delete_synced_documents(mongo_uri: str, mongo_database: str, mongo_collection: str, ids: list) -> int:
     """Delete the given MongoDB _id values now that they are in the catalog."""
-    from bson import ObjectId
-    from pymongo import MongoClient
 
     client = MongoClient(mongo_uri)
     try:
@@ -129,6 +132,13 @@ def main(argv=None) -> None:
         if total == 0:
             print(f"No documents found in {args.mongo_database}.{args.mongo_collection}; nothing to sync")
             return
+
+        for field in read_df.schema.fields:
+            if isinstance(field.dataType, NullType):
+                read_df = read_df.withColumn(
+                    field.name,
+                    F.lit(None).cast("string")
+                )
 
         # The connector infers "_id" as a plain hex string by default (not a
         # struct with an "oid" field), so read it directly.

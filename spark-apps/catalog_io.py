@@ -1,6 +1,7 @@
 """Demonstrate Delta Lake operations through the Hive catalog."""
 
 import argparse
+import os
 
 from pyspark.sql import SparkSession
 
@@ -12,23 +13,11 @@ EXPECTED = [(1, "Ada", "engineering"), (2, "Grace", "data")]
 
 
 def create_spark() -> SparkSession:
-    builder = (
+    return (
         SparkSession.builder.appName("delta-catalog-example")
-        .master("spark://spark-master:7077")
-        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-        .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
-        .config("spark.hadoop.hive.metastore.uris", "thrift://hive-metastore:9083")
-        .config("spark.sql.warehouse.dir", "s3a://warehouse/spark-warehouse")
-        .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000")
-        .config("spark.hadoop.fs.s3a.access.key", "minioadmin")
-        .config("spark.hadoop.fs.s3a.secret.key", "minioadmin")
-        .config("spark.hadoop.fs.s3a.aws.credentials.provider", "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider")
-        .config("spark.hadoop.fs.s3a.endpoint.region", "us-east-1")
-        .config("spark.hadoop.fs.s3a.path.style.access", "true")
-        .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
-        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+        .remote(os.environ.get("SPARK_CONNECT_URL", "sc://spark-connect:15002"))
+        .getOrCreate()
     )
-    return builder.enableHiveSupport().getOrCreate()
 
 
 def main() -> None:

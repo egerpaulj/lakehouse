@@ -9,8 +9,6 @@ case "$mode" in
 esac
 
 docker compose run --rm --no-deps spark-worker \
-  /opt/spark/bin/spark-submit \
-  --master spark://spark-master:7077 \
-  --conf spark.jars.ivy=/tmp/.ivy2 \
-  --packages io.delta:delta-spark_2.12:3.2.0,org.apache.hadoop:hadoop-aws:3.3.4 \
+  env SPARK_CONNECT_URL=sc://spark-connect:15002 \
+  /opt/conda/bin/python \
   /opt/spark-apps/catalog_io.py "$mode"

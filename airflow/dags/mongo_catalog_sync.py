@@ -16,22 +16,6 @@ from airflow.operators.bash import BashOperator
 
 CONFIG_PATH = Path(__file__).with_name("mongo_catalog_sync_jobs.yaml")
 
-SPARK_JARS = ",".join(
-    f"/opt/spark-jars/{jar}"
-    for jar in (
-        "delta-spark_2.12-3.2.0.jar",
-        "delta-storage-3.2.0.jar",
-        "hadoop-aws-3.3.4.jar",
-        "aws-java-sdk-bundle-1.12.262.jar",
-        "wildfly-openssl-1.0.7.Final.jar",
-        "mongo-spark-connector_2.12-10.4.1.jar",
-        "mongodb-driver-sync-5.1.1.jar",
-        "mongodb-driver-core-5.1.1.jar",
-        "bson-5.1.1.jar",
-    )
-)
-
-
 def load_job_configs() -> list:
     with CONFIG_PATH.open() as config_file:
         config = yaml.safe_load(config_file) or {}
@@ -58,14 +42,8 @@ def build_spark_submit_command(job: dict) -> str:
 
     args_str = " ".join(args)
     return (
-        "spark-submit "
-        "--master spark://spark-master:7077 "
-        "--conf spark.jars.ivy=/tmp/.ivy2 "
-        "--conf spark.driver.bindAddress=0.0.0.0 "
-        "--conf spark.driver.host=airflow "
-        "--conf spark.driver.extraClassPath=/opt/spark-jars/\\* "
-        "--conf spark.executor.extraClassPath=/opt/spark/jars/\\* "
-        f"--jars {SPARK_JARS} "
+        "SPARK_CONNECT_URL=sc://spark-connect:15002 "
+        "python "
         f"/opt/spark-apps/mongo_catalog_sync.py {args_str}"
     )
 

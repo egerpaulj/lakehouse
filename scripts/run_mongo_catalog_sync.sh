@@ -15,8 +15,6 @@ EOF
 [ "$#" -ge 1 ] || usage
 
 docker compose run --rm --no-deps spark-worker \
-  /opt/spark/bin/spark-submit \
-  --master spark://spark-master:7077 \
-  --conf spark.jars.ivy=/tmp/.ivy2 \
-  --packages io.delta:delta-spark_2.12:3.2.0,org.apache.hadoop:hadoop-aws:3.3.4,org.mongodb.spark:mongo-spark-connector_2.12:10.4.1 \
+  env SPARK_CONNECT_URL=sc://spark-connect:15002 \
+  /opt/conda/bin/python \
   /opt/spark-apps/mongo_catalog_sync.py "$@"

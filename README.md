@@ -5,7 +5,7 @@ The purpose of this repository is to run a local spark-based lakehouse for test 
 
 The components used are:
 
-* Spark 3.5.3 master and worker, with Delta Lake 3.2.0.
+* Spark 3.5.3 master and workers, with Delta Lake 3.2.0 and a Spark Connect endpoint.
 * Hive Metastore 3.1.3 backed by PostgreSQL 16.
 * MinIO as S3-compatible object storage (`warehouse` and `raw` buckets).
 * Prometheus scraping Spark JVM metrics and Grafana with a provisioned dashboard.
@@ -32,6 +32,7 @@ scripts/./start.sh
 | --- | --- | --- |
 | Spark master UI | http://localhost:8080 | - |
 | Spark worker UI | http://localhost:8081 | - |
+| Spark Connect | `sc://localhost:15002` | - |
 | Hive Metastore | `thrift://localhost:9083` | PostgreSQL-backed |
 | MinIO API / console | http://localhost:9000 / http://localhost:9001 | `minioadmin` / `minioadmin` |
 | Jupyter | http://localhost:8888 | token `local` |
@@ -45,10 +46,35 @@ scripts/./start.sh
 |Service|	Address|
 |---|---|
 |Spark Master|	spark://spark-master:7077|
+|Spark Connect|	sc://spark-connect:15002|
 |Hive Metastore|	hive-metastore:9083|
 |MinIO|	minio:9000|
 
 **Note:** host applications (i.e. your computer) must use `localhost` instead. 
+
+## Spark Connect
+
+The `spark-connect` service exposes Spark Connect on port 15002 and submits
+work to the existing Spark standalone cluster. Connect from an application on
+the host with the matching client version:
+
+```bash
+pip install "pyspark[connect]==3.5.3"
+```
+
+```python
+from pyspark.sql import SparkSession
+
+spark = SparkSession.builder.remote("sc://localhost:15002").getOrCreate()
+```
+
+Note: use spark connect instead of a jupyter server for speed (i.e. `sc://localhost:15002`)
+
+From the bundled Jupyter container, use
+`sc://spark-connect:15002` instead. Its image includes the Spark Connect
+client dependencies. Spark Connect sessions use the server's configured Delta,
+Hive Metastore, and MinIO integrations; configure session-level options on the
+Connect `SparkSession` when an application needs additional settings.
 
 ## Architecture and data flow
 
@@ -62,6 +88,7 @@ flowchart TB
 
     subgraph compute["Spark Compute"]
         direction LR
+        connect["Spark Connect"]
         master["Spark Master"]
         worker["Spark Worker"]
     end
@@ -94,9 +121,10 @@ flowchart TB
         airflow["Airflow"]
     end
 
-    notebook -->|"submit / query"| master
-    submit -->|"submit"| master
-    airflow -->|"submit Spark job"| master
+    notebook -->|"connect / query"| connect
+    submit -->|"connect / query"| connect
+    airflow -->|"connect / query"| connect
+    connect -->|"submit"| master
     master -->|"schedule"| worker
     worker -->|"catalog"| metastore
     metastore -->|"metadata"| postgres
@@ -117,7 +145,7 @@ flowchart TB
     classDef observabilityNode fill:#ede9fe,stroke:#7c3aed,color:#4c1d95
     classDef schedulerNode fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
     class notebook,submit client
-    class master,worker computeNode
+    class connect,master,worker computeNode
     class metastore,postgres catalogNode
     class minio,delta storageNode
     class prometheus,grafana observabilityNode
@@ -135,7 +163,7 @@ share Spark 3.5.3 and Python 3.11.10.
 
 | Component | Version | Source or usage |
 | --- | --- | --- |
-| Spark master/worker | 3.5.3 | `quay.io/jupyter/pyspark-notebook:spark-3.5.3` |
+| Spark master/worker/Connect server | 3.5.3 | `quay.io/jupyter/pyspark-notebook:spark-3.5.3` |
 | Jupyter/PySpark | 3.5.3 / Python 3.11.10 | Same base image; notebook kernel metadata |
 | Scala | 2.12 | Spark 3.5.3 distribution and `delta-spark_2.12` artifacts |
 | Delta Lake | 3.2.0 | `delta-spark==3.2.0`; `io.delta:delta-spark_2.12:3.2.0` |
@@ -178,11 +206,19 @@ and AWS SDK versions; each classpath is pinned as shown above.
 ----
 ## Spark Apps
 Example spark apps:
-- spark-apps/catalog_io.py (uses hive catalog)
-- spark-apps/delta_io.py (direct access mini-io `s3a://`)
+- spark-apps/catalog_io.py (uses the Hive catalog through Spark Connect)
+- spark-apps/delta_io.py (direct access to MinIO `s3a://` through Spark Connect)
 - spark-apps/mongo_catalog_sync.py (reads a MongoDB collection, appends it to
-  the Delta catalog, then deletes the synced documents; see
+  the Delta catalog through Spark Connect, then deletes the synced documents; see
   [Airflow](#mongodb-to-catalog-sync-jobs) below for scheduling)
+
+All applications create a remote `SparkSession` with
+`SparkSession.builder.remote(...)`; they do not start a local Spark driver or
+submit directly to the standalone master. The shell scripts and Airflow DAGs
+run the Python clients against `sc://spark-connect:15002`. Delta, Hive
+Metastore, S3A, and MongoDB connector configuration is owned by the
+`spark-connect` service, so changes to the client applications do not need to
+duplicate server-side Spark configuration.
 
 The catalog examples:
 
@@ -218,11 +254,16 @@ The notebooks do the following:
 - reads an earlier table version with time travel
 - Stop the Spark session
 
+`notebooks/spark_connect_delta.ipynb` demonstrates the same Delta workflow
+through the [Spark Connect](#spark-connect) endpoint (`sc://spark-connect:15002`)
+instead of connecting directly to the Spark master.
+
 ## Airflow
 
-Airflow runs the `catalog_io_hourly` DAG every hour. The DAG submits the
-existing `spark-apps/catalog_io.py append` operation to the Spark cluster, so
-each successful run adds one record to the catalog Delta table.
+Airflow runs the `catalog_io_hourly` DAG every hour. The DAG runs the
+`spark-apps/catalog_io.py append` Spark Connect client against the
+`spark-connect` service, so each successful run adds one record to the catalog
+Delta table.
 
 
 Airflow metadata is stored in the PostgreSQL `airflow` database. Airflow
@@ -234,7 +275,8 @@ available in Grafana under the **Spark** folder.
 
 ### MongoDB to catalog sync jobs
 
-`spark-apps/mongo_catalog_sync.py` is a generic, configurable Spark app that:
+`spark-apps/mongo_catalog_sync.py` is a generic, configurable Spark Connect
+client that:
 
 1. Ensures the target catalog database exists (creates it if missing).
 2. Reads all documents from a MongoDB collection.
@@ -501,6 +543,4 @@ Table
 (2 rows)
 
 ```
-
-
 

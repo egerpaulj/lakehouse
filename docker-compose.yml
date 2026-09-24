@@ -153,6 +153,53 @@ services:
     networks:
       - development_network
 
+  spark-connect:
+    build:
+      context: .
+      dockerfile: spark/Dockerfile
+    restart: unless-stopped
+    user: "0:0"
+    depends_on:
+      spark-master:
+        condition: service_healthy
+      spark-worker:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+      hive-metastore:
+        condition: service_healthy
+    command: >
+      /opt/spark/bin/spark-submit
+      --class org.apache.spark.sql.connect.service.SparkConnectServer
+      --master spark://spark-master:7077
+      --conf spark.driver.host=spark-connect
+      --conf spark.driver.bindAddress=0.0.0.0
+      --conf spark.connect.grpc.binding.address=0.0.0.0
+      --conf spark.connect.grpc.binding.port=15002
+      --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension
+      --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
+      --conf spark.sql.catalogImplementation=hive
+      --conf spark.hadoop.hive.metastore.uris=thrift://hive-metastore:9083
+      --conf spark.sql.warehouse.dir=s3a://warehouse/spark-warehouse
+      --conf spark.hadoop.fs.s3a.endpoint=http://minio:9000
+      --conf spark.hadoop.fs.s3a.access.key=${MINIO_ROOT_USER:-minioadmin}
+      --conf spark.hadoop.fs.s3a.secret.key=${MINIO_ROOT_PASSWORD:-minioadmin}
+      --conf spark.hadoop.fs.s3a.aws.credentials.provider=org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider
+      --conf spark.hadoop.fs.s3a.endpoint.region=us-east-1
+      --conf spark.hadoop.fs.s3a.path.style.access=true
+      --conf spark.hadoop.fs.s3a.connection.ssl.enabled=false
+      --conf spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem
+      /opt/spark/jars/spark-connect_2.12-3.5.3.jar
+    ports:
+      - "15002:15002"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/15002'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - development_network
+
   spark-worker:
     build:
       context: .
@@ -279,9 +326,7 @@ services:
     restart: unless-stopped
     user: "0:0"
     depends_on:
-      spark-master:
-        condition: service_healthy
-      spark-worker:
+      spark-connect:
         condition: service_healthy
       hive-metastore:
         condition: service_healthy

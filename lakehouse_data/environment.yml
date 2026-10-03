@@ -1,0 +1,10 @@
+name: local-lakehouse
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - pyspark[connect]==3.5.3
+      - delta-spark==3.2.0
+      - -e .

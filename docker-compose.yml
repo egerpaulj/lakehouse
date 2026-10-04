@@ -334,6 +334,8 @@ services:
         condition: service_completed_successfully
       statsd-exporter:
         condition: service_started
+      embedding-api:
+        condition: service_healthy
     command:
       - bash
       - -c
@@ -377,6 +379,26 @@ services:
       start_period: 30s
     volumes:
       - airflow-data:/opt/airflow/data
+    networks:
+      - development_network
+
+  embedding-api:
+    build:
+      context: .
+      dockerfile: embedding_api/Dockerfile
+      args:
+        EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-m3}
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
     networks:
       - development_network
 

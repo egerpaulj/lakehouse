@@ -345,6 +345,130 @@ documents, and `--batch-limit N` to cap how many documents are processed in
 one run.
 
 
+## Medallion: Bronze to Silver (responses_b0 -> responses_s0)
+
+The crawler data follows a medallion layout in the Delta catalog:
+
+| Layer | Table | Content | Produced by |
+|-------|-------|---------|-------------|
+| Bronze (b0) | `crawler.responses_b0` | Raw crawler documents, appended as-is from MongoDB (with `_synced_at`). Change Data Feed is enabled. | `mongo_catalog_sync_crawler_articles` DAG |
+| Silver (s0) | `crawler.responses_s0` | Same rows, kept in sync with b0 through its Change Data Feed, **decorated** with `summary`, `ner_nel`, `text_embedding`, `summary_embedding`. | four independent `responses_s0_crawler_responses_*` DAGs |
+
+```mermaid
+flowchart LR
+    mongo[("MongoDB<br/>crawler_responses_datalake")]
+    subgraph bronze["Bronze"]
+        b0[("responses_b0<br/>Delta + CDF")]
+    end
+    subgraph silver["Silver"]
+        s0[("responses_s0<br/>Delta")]
+    end
+    ollama["Ollama<br/>(LLM)"]
+    api["Embedding API<br/>(BGE-M3)"]
+    models[("BAAI/bge-m3<br/>baked into image")]
+
+    mongo -->|"mongo_catalog_sync (hourly)"| b0
+    b0 -->|"CDF stream, MERGE by _id<br/>(cdf DAG)"| s0
+    s0 -->|"rows missing summary"| sum["summary DAG"]
+    sum -->|"llm-summary"| ollama
+    sum -->|"summary"| s0
+    s0 -->|"rows missing ner_nel"| ner["ner_nel DAG"]
+    ner -->|"llm-ner-nel"| ollama
+    ner -->|"ner_nel (JSON)"| s0
+    s0 -->|"rows with a summary"| emb["embedding DAG"]
+    emb -->|"POST /embed"| api
+    models -->|"loaded at start"| api
+    emb -->|"text_embedding, summary_embedding"| s0
+```
+
+The DAG factory `airflow/dags/responses_s0_pipeline.py` creates, per entry in
+[`airflow/dags/responses_s0_pipeline.yaml`](airflow/dags/responses_s0_pipeline.yaml),
+**four independent DAGs** (not chained), so each job can be scheduled, paused,
+triggered and retried on its own:
+
+| DAG | Job |
+|-----|-----|
+| `responses_s0_<name>_cdf` | CDF stream b0 -> s0 |
+| `responses_s0_<name>_summary` | summarize `text` -> `summary` |
+| `responses_s0_<name>_ner_nel` | NER/NEL -> `ner_nel` |
+| `responses_s0_<name>_embedding` | embed `text` and `summary` (only rows that have a summary) |
+
+Each job has its own `schedule`, `limit` (rows per run), `paused` flag (create the DAG
+paused) and model/strategy/api settings in the YAML. Because every decorator only
+selects rows still missing its value, the jobs can run in any order; rows that arrive
+later are picked up by the next run. Note Airflow uses the `SequentialExecutor` here,
+so only one task runs at a time across all DAGs.
+
+### Bronze to Silver: Change Data Feed stream
+
+`spark-apps/cdf_b0_to_s0.py` uses the `delta_streaming` package
+(`lakehouse_data/`). On the first run it enables CDF on b0 (also done by
+`mongo_catalog_sync.py` for new tables), creates s0 from a snapshot of b0 plus the
+empty decorator columns, and starts the stream at that version. Each run then
+processes the changes since the last checkpoint (`availableNow`) and `MERGE`s them
+into s0 by `_id`: inserts and updates are upserted, deletes are removed. Only the
+b0 columns are written, so decorator values already in s0 are preserved.
+Metrics are emitted to StatsD like the other streaming pipelines.
+
+### Decorators
+
+All decorators are run by `spark-apps/decorate_s0.py --decorator <name>`. Each run
+selects up to `limit` s0 rows that still lack the value, computes it, and merges it
+back by `_id`. They are therefore idempotent, and rows that fail (for example an
+LLM error) are retried on the next run. They run in the `/opt/decorators-venv`
+virtualenv inside the Airflow image so the LLM client dependencies do not clash
+with Airflow.
+
+1. **summary** - uses [`llm-summary`](https://pypi.org/project/llm-summary/)
+   (`SummaryInferenceProvider`) to summarize `text` and stores the result in the
+   string column `summary`. `summary.model` and `summary.strategy` are configurable.
+2. **ner_nel** - uses [`llm-ner-nel`](https://pypi.org/project/llm-ner-nel/)
+   (`RelationshipInferenceProvider`) to extract entities (NER), link them (NEL) and
+   their relationships from `text`. The result (topic and relationships) is stored as
+   JSON in the string column `ner_nel`. `ner_nel.model` and `ner_nel.strategy` are
+   configurable.
+3. **embedding** - calls the separate **embedding API** (`embedding_api/`, Compose service
+   `embedding-api`) to embed `text` and `summary` into the `array<float>` columns
+   `text_embedding` and `summary_embedding`. Only rows that already have a
+   `summary` are embedded, so run it after the summary job. `embeddings.api_url` is configurable.
+
+### Embedding API
+
+`embedding_api/` is a small FastAPI service wrapping `BGEM3Embedder` (BAAI/bge-m3
+dense vectors, adapted from
+[vespa_eval_framework](https://github.com/egerpaulj/vespa_eval_framework/blob/main/src/embeddings.py)).
+The Spark/Airflow containers carry no torch/model dependencies. The model is
+downloaded **once, at image build time**, into its own cached Docker layer
+(`/models/BAAI--bge-m3`), so container starts never download it and need no internet
+access; the first `--build` takes longer and the image is a few GB. The layer is only
+rebuilt if `embedding_api/embeddings.py` or the model (`EMBEDDING_MODEL`, a build arg)
+changes. If the files were ever missing, the service falls back to downloading them
+at start.
+
+```bash
+docker compose up -d --build embedding-api
+docker compose exec airflow curl -s http://embedding-api:8000/health
+docker compose exec airflow curl -s -X POST http://embedding-api:8000/embed -H 'content-type: application/json' \
+  -d '{"texts": ["hello world"]}'    # {"model": ..., "dimension": 1024, "embeddings": [[...]]}
+```
+
+`POST /embed` takes `{"texts": [...]}` (max 64 per request) and returns one vector per
+text. The port is not published to the host by default.
+
+The summarize and ner_nel decorators assume an Ollama instance is reachable at
+`ollama_host` (default `http://ollama:11434`, not part of this Compose stack) with
+the configured models pulled, e.g. `ollama pull gemma3:12b`. Use
+`http://host.docker.internal:11434` for an Ollama running on the Docker host.
+
+Run a decorator manually:
+
+```bash
+docker compose exec airflow bash -c "SPARK_CONNECT_URL=sc://spark-connect:15002 \
+  /opt/decorators-venv/bin/python /opt/spark-apps/decorate_s0.py \
+  --decorator summary --table crawler.responses_s0 --model gemma3:12b --limit 10"
+```
+
+
 ## Notes on locked down versions
 ### Configuration
 

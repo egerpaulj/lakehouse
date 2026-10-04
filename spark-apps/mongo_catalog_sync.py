@@ -136,6 +136,11 @@ def main(argv=None) -> None:
             read_df.write.format("delta").mode("append").saveAsTable(full_table_name)
         else:
             read_df.write.format("delta").mode("overwrite").saveAsTable(full_table_name)
+        # Change Data Feed lets downstream jobs (e.g. b0 -> s0) stream changes.
+        spark.sql(
+            f"ALTER TABLE {full_table_name} "
+            "SET TBLPROPERTIES (delta.enableChangeDataFeed = true)"
+        )
         print(f"Wrote {total} document(s) from {args.mongo_collection} to {full_table_name}")
 
         read_df.unpersist()

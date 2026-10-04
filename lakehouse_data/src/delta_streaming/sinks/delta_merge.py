@@ -22,6 +22,10 @@ class DeltaCDFMergeSink(ChangeSink):
         delete            -> DELETE
 
     update_preimage is ignored.
+
+    By default whole rows are copied (UPDATE SET * / INSERT *). Pass
+    ``columns`` to copy only those columns, leaving every other target
+    column untouched on update (e.g. columns owned by downstream jobs).
     """
 
     DEFAULT_UPSERT_TYPES = (
@@ -35,10 +39,13 @@ class DeltaCDFMergeSink(ChangeSink):
         merge_condition: str,
         metrics: StatsdMetrics | None = None,
         upsert_change_types: Sequence[str] | None = None,
+        columns: Sequence[str] | None = None,
     ):
         self._spark = spark
         self._merge_condition = merge_condition
         self._metrics = metrics
+
+        self._columns = tuple(columns) if columns else None
 
         self._upsert_change_types = tuple(
             upsert_change_types
@@ -59,6 +66,19 @@ class DeltaCDFMergeSink(ChangeSink):
             # is not installed: ship the metrics module by value.
             cloudpickle.register_pickle_by_value(metrics_module)
         target_table = config.target_table
+        columns = self._columns
+        if columns:
+            quoted = [f"`{column}`" for column in columns]
+            update_clause = "UPDATE SET " + ", ".join(
+                f"target.{c} = source.{c}" for c in quoted
+            )
+            insert_clause = (
+                f"INSERT ({', '.join(quoted)}) VALUES "
+                f"({', '.join(f'source.{c}' for c in quoted)})"
+            )
+        else:
+            update_clause = "UPDATE SET *"
+            insert_clause = "INSERT *"
         upsert_types = ", ".join(
             f"'{value}'"
             for value in self._upsert_change_types
@@ -93,10 +113,10 @@ class DeltaCDFMergeSink(ChangeSink):
                         THEN DELETE
                     WHEN MATCHED
                         AND source._change_type IN ({upsert_types})
-                        THEN UPDATE SET *
+                        THEN {update_clause}
                     WHEN NOT MATCHED
                         AND source._change_type IN ({upsert_types})
-                        THEN INSERT *
+                        THEN {insert_clause}
                     """
                 ).collect()
 

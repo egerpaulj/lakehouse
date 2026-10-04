@@ -31,6 +31,14 @@ RUN chmod 644 /opt/spark-jars/mongo-spark-connector_2.12-10.4.1.jar \
     /opt/spark-jars/mongodb-driver-sync-5.1.1.jar \
     /opt/spark-jars/mongodb-driver-core-5.1.1.jar \
     /opt/spark-jars/bson-5.1.1.jar
+# Decorator dependencies (LLM clients) live in their own venv so they cannot
+# conflict with Airflow's pinned packages. Embeddings come from embedding-api.
+RUN python -m venv /opt/decorators-venv \
+    && /opt/decorators-venv/bin/pip install --no-cache-dir \
+        pyspark==3.5.3 pandas pyarrow numpy grpcio grpcio-status googleapis-common-protos requests \
+        llm-summary==0.6.1 llm-ner-nel==0.6.1 \
+    && chown -R airflow /opt/decorators-venv
+COPY lakehouse_data/src /opt/lakehouse_data/src
 COPY airflow/dags /opt/airflow/dags
 COPY spark-apps /opt/spark-apps
 USER airflow

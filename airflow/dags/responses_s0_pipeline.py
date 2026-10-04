@@ -71,7 +71,9 @@ def decorator_command(p: dict, job: str) -> str:
             args += ["--model", section["model"]]
         args += ["--strategy", section.get("strategy", "ollama")]
         args += ["--ollama-host", p.get("ollama_host", "http://ollama:11434")]
-    return command(DECORATOR_PYTHON, "decorate_s0.py", args)
+    return command(
+        f"PYTHONPATH=/opt/lakehouse_data/src {DECORATOR_PYTHON}", "decorate_s0.py", args
+    )
 
 
 def create_dag(p: dict, job: str) -> DAG:

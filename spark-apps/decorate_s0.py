@@ -17,9 +17,12 @@ import argparse
 import logging
 import os
 import sys
+import time
 
 from pyspark.sql import SparkSession
 from pyspark.sql.types import ArrayType, FloatType, StringType, StructField, StructType
+
+from delta_streaming.metrics import StatsdMetrics
 
 logger = logging.getLogger("decorate_s0")
 
@@ -129,7 +132,10 @@ PENDING = {
 
 
 def decorate_batch(spark, args, run, schema, key_schema, rows):
-    """Run the decorator on rows and MERGE the results into the table."""
+    """Run the decorator on rows and MERGE the results into the table.
+
+    Returns (succeeded, failed) row counts.
+    """
     results = []
     for row in rows:
         try:
@@ -139,7 +145,7 @@ def decorate_batch(spark, args, run, schema, key_schema, rows):
             continue
         results.append((row["key"], *[result[f.name] for f in schema.fields]))
     if not results:
-        return 0
+        return 0, len(rows)
 
     view = f"_s0_decorated_{args.decorator}"
     full_schema = StructType([key_schema] + schema.fields)
@@ -150,7 +156,7 @@ def decorate_batch(spark, args, run, schema, key_schema, rows):
         f"ON target.`{args.key_column}` = source.`{args.key_column}` "
         f"WHEN MATCHED THEN UPDATE SET {sets}"
     )
-    return len(results)
+    return len(results), len(rows) - len(results)
 
 
 def main(argv=None) -> None:
@@ -167,6 +173,8 @@ def main(argv=None) -> None:
         ]
     )
 
+    metrics = StatsdMetrics(stream=f"{args.table}_{args.decorator}")
+    started_at = time.monotonic()
     spark = (
         SparkSession.builder.appName(f"decorate-{args.decorator}-{args.table}")
         .remote(os.environ.get("SPARK_CONNECT_URL", "sc://spark-connect:15002"))
@@ -182,12 +190,23 @@ def main(argv=None) -> None:
             ).collect()
         ]
         logger.info("%s: %d row(s) to decorate", args.decorator, len(pending))
+        metrics.pending(len(pending))
 
         key_type = spark.table(args.table).schema[args.key_column]
         key_schema = StructField(args.key_column, key_type.dataType)
-        done = 0
+        done = failed = 0
         for batch in chunks(pending, args.batch_size):
-            done += decorate_batch(spark, args, run, schema, key_schema, batch)
+            ok, bad = decorate_batch(spark, args, run, schema, key_schema, batch)
+            done += ok
+            failed += bad
+            metrics.decorated(ok, bad)
+            metrics.pending(len(pending) - done - failed)
+        metrics.observe_batch_rows(len(pending))
+        metrics.observe_batch_duration(time.monotonic() - started_at)
+        if failed:
+            metrics.batch_failed()
+        else:
+            metrics.batch_succeeded()
         print(f"Decorated {done}/{len(pending)} row(s) with {args.decorator} in {args.table}")
         if pending and done == 0:
             sys.exit(1)

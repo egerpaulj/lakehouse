@@ -48,3 +48,14 @@ mappings:
     observer_type: histogram
     labels:
       stream: "$1"
+  - match: "delta_streaming.*.decorated.*"
+    name: "delta_streaming_decorated_rows_total"
+    match_metric_type: counter
+    labels:
+      stream: "$1"
+      status: "$2"
+  - match: "delta_streaming.*.pending"
+    name: "delta_streaming_pending_rows"
+    match_metric_type: gauge
+    labels:
+      stream: "$1"

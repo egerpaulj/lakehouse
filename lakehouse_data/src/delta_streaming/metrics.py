@@ -81,3 +81,10 @@ class StatsdMetrics:
 
     def batch_failed(self, exc: BaseException | None = None) -> None:
         self._counter(self._name("batches", "failed"), 1)
+
+    def pending(self, rows: int) -> None:
+        self._gauge(self._name("pending"), rows)
+
+    def decorated(self, succeeded: int, failed: int) -> None:
+        self._counter(self._name("decorated", "succeeded"), succeeded)
+        self._counter(self._name("decorated", "failed"), failed)

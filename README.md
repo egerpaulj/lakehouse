@@ -432,6 +432,13 @@ with Airflow.
    `text_embedding` and `summary_embedding`. Only rows that already have a
    `summary` are embedded, so run it after the summary job. `embeddings.api_url` is configurable.
 
+### Metrics
+
+All four jobs report to the Grafana **Delta streaming** dashboard (pick the stream with the `$stream` variable):
+
+- `crawler_responses_s0` - the CDF b0 to s0 job (rows processed, inserts/updates, batch duration). Runs with no changes emit nothing.
+- `crawler_responses_s0_summary`, `_ner_nel`, `_embeddings` - rows pending, rows decorated by status (succeeded/failed), batch duration.
+
 ### Embedding API
 
 `embedding_api/` is a small FastAPI service wrapping `BGEM3Embedder` (BAAI/bge-m3

@@ -77,6 +77,10 @@ def main(argv=None) -> None:
                 # Replaces any same-named b0 column with the decorator column.
                 snapshot = snapshot.withColumn(name, F.lit(None).cast(data_type))
             snapshot.write.format("delta").saveAsTable(args.target_table)
+            seeded = spark.table(args.target_table).count()
+            seed_metrics = StatsdMetrics(stream=args.target_table)
+            seed_metrics.processed("insert", seeded)
+            seed_metrics.merge_result(inserted=seeded, updated=0, deleted=0)
             print(f"Created {args.target_table} from {args.source_table} @ version {starting_version}")
 
         # Decorator columns are owned by s0 (b0 may have a same-named, empty one).

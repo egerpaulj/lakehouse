@@ -19,3 +19,32 @@ mappings:
     labels:
       app_id: "$1"
       executor_id: "$2"
+  - match: "delta_streaming.*.processed.*"
+    name: "delta_streaming_records_processed_total"
+    match_metric_type: counter
+    labels:
+      stream: "$1"
+      change_type: "$2"
+  - match: "delta_streaming.*.merge.*"
+    name: "delta_streaming_merge_rows_total"
+    match_metric_type: counter
+    labels:
+      stream: "$1"
+      operation: "$2"
+  - match: "delta_streaming.*.batches.*"
+    name: "delta_streaming_batches_total"
+    match_metric_type: counter
+    labels:
+      stream: "$1"
+      status: "$2"
+  - match: "delta_streaming.*.batch_rows"
+    name: "delta_streaming_batch_rows"
+    match_metric_type: gauge
+    labels:
+      stream: "$1"
+  - match: "delta_streaming.*.batch_duration"
+    name: "delta_streaming_batch_duration_seconds"
+    match_metric_type: observer
+    observer_type: histogram
+    labels:
+      stream: "$1"

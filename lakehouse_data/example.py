@@ -8,6 +8,7 @@ from delta_streaming import (
     DeltaCDFMergeSink,
     DeltaCDFSource,
     IdentityTransformer,
+    StatsdMetrics,
     StreamConfig,
 )
 
@@ -64,6 +65,9 @@ pipeline = CDFStreamingPipeline(
     sink=DeltaCDFMergeSink(
         spark=spark,
         merge_condition="target.id = source.id",
+        metrics=StatsdMetrics(
+            stream="customer_cdf",
+        ),
     ),
 )
 

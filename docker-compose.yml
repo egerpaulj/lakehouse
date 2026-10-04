@@ -391,6 +391,7 @@ services:
       - ./monitoring/statsd/mapping.yml:/etc/statsd/mapping.yml:ro,z
     ports:
       - "9102:9102"
+      - "9125:9125/udp"
     networks:
       - development_network
 

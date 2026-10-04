@@ -10,5 +10,5 @@ jobs:
     mongo_database: Crawler
     mongo_collection: crawler_responses_datalake
     catalog_database: crawler
-    catalog_table: responses_raw
+    catalog_table: responses_b0
     schedule: "@hourly"

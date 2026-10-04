@@ -2,100 +2,444 @@
   "id": null,
   "uid": "spark-lakehouse",
   "title": "Spark cluster overview",
-  "tags": ["spark", "delta", "lakehouse"],
+  "tags": [
+    "spark",
+    "delta",
+    "lakehouse"
+  ],
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 1,
   "refresh": "15s",
-  "time": {"from": "now-15m", "to": "now"},
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
   "panels": [
     {
       "type": "stat",
       "title": "Spark services up",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "sum(up{job=~\"spark-.*\"})", "refId": "A"}],
-      "fieldConfig": {"defaults": {"unit": "short", "min": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 2}]}}, "overrides": []},
-      "gridPos": {"h": 5, "w": 6, "x": 0, "y": 0}
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(up{job=~\"spark-.*\"})",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 2
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      }
     },
     {
       "type": "timeseries",
       "title": "Scrape availability",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "up{job=~\"spark-.*\"}", "legendFormat": "{{job}}", "refId": "A"}],
-      "fieldConfig": {"defaults": {"unit": "short", "min": 0, "max": 1}, "overrides": []},
-      "gridPos": {"h": 5, "w": 18, "x": 6, "y": 0}
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "up{job=~\"spark-.*\"}",
+          "legendFormat": "{{job}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 18,
+        "x": 6,
+        "y": 0
+      }
     },
     {
       "type": "timeseries",
       "title": "Spark worker availability",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "up{job=~\"spark-worker(-[23])?\"}", "legendFormat": "{{job}}", "refId": "A"}],
-      "fieldConfig": {"defaults": {"unit": "short", "min": 0, "max": 1}, "overrides": []},
-      "gridPos": {"h": 5, "w": 18, "x": 0, "y": 5}
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "up{job=~\"spark-worker(-[23])?\"}",
+          "legendFormat": "{{job}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 18,
+        "x": 0,
+        "y": 5
+      }
     },
     {
       "type": "timeseries",
       "title": "JVM heap used",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "metrics_jvm_heap_used_Value{job=~\"spark-.*\"}", "legendFormat": "{{job}}", "refId": "A"}],
-      "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 10}
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "metrics_jvm_heap_used_Value{job=~\"spark-.*\"}",
+          "legendFormat": "{{job}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 10
+      }
     },
     {
       "type": "timeseries",
       "title": "JVM heap max",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "metrics_jvm_heap_max_Value{job=~\"spark-.*\"}", "legendFormat": "{{job}}", "refId": "A"}],
-      "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 10}
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "metrics_jvm_heap_max_Value{job=~\"spark-.*\"}",
+          "legendFormat": "{{job}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 10
+      }
     },
     {
       "type": "timeseries",
       "title": "JVM committed memory",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "metrics_jvm_heap_committed_Value{job=~\"spark-.*\"}", "legendFormat": "{{job}}", "refId": "A"}],
-      "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 18}
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "metrics_jvm_heap_committed_Value{job=~\"spark-.*\"}",
+          "legendFormat": "{{job}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 18
+      }
     },
     {
       "type": "timeseries",
       "title": "Spark JVM CPU seconds",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "rate(metrics_JVMCPU_jvmCpuTime_Value{job=~\"spark-.*\"}[5m]) / 1e9", "legendFormat": "{{job}}", "refId": "A"}],
-      "fieldConfig": {"defaults": {"unit": "cores"}, "overrides": []},
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 18}
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "rate(metrics_JVMCPU_jvmCpuTime_Value{job=~\"spark-.*\"}[5m]) / 1e9",
+          "legendFormat": "{{job}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "cores"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 18
+      }
     },
     {
       "type": "timeseries",
       "title": "Spark active stages",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "sum({__name__=~\"metrics_app_.*_driver_DAGScheduler_stage_runningStages_Value\",job=\"spark-driver\"}) or vector(0)", "legendFormat": "active stages", "refId": "A"}],
-      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []},
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 26}
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum({__name__=~\"metrics_app_.*_driver_DAGScheduler_stage_runningStages_Value\",job=\"spark-driver\"}) or vector(0)",
+          "legendFormat": "active stages",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 26
+      }
     },
     {
       "type": "timeseries",
       "title": "Spark job submission rate",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "sum(rate({__name__=~\"metrics_app_.*_driver_DAGScheduler_job_allJobs_Value\",job=\"spark-driver\"}[5m])) or vector(0)", "legendFormat": "jobs/sec", "refId": "A"}],
-      "fieldConfig": {"defaults": {"unit": "ops", "min": 0}, "overrides": []},
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 26}
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate({__name__=~\"metrics_app_.*_driver_DAGScheduler_job_allJobs_Value\",job=\"spark-driver\"}[5m])) or vector(0)",
+          "legendFormat": "jobs/sec",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 26
+      }
     },
     {
       "type": "timeseries",
       "title": "MinIO S3 requests",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "sum by (api) (rate(minio_s3_requests_total[5m]))", "legendFormat": "{{api}}", "refId": "A"}],
-      "fieldConfig": {"defaults": {"unit": "reqps", "min": 0}, "overrides": []},
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 34}
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (api) (rate(minio_s3_requests_total[5m]))",
+          "legendFormat": "{{api}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 34
+      }
     },
     {
       "type": "timeseries",
       "title": "MinIO bucket usage",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [{"expr": "minio_cluster_usage_total_bytes", "legendFormat": "cluster", "refId": "A"}],
-      "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 34}
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "minio_cluster_usage_total_bytes",
+          "legendFormat": "cluster",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 34
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Spark records read",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "spark_executor_records_read_count",
+          "legendFormat": "{{app_id}} / executor {{executor_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 42
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Spark records written",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "spark_executor_records_written_count",
+          "legendFormat": "{{app_id}} / executor {{executor_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 42
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Spark filesystem file read bytes",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "spark_executor_filesystem_file_read_bytes",
+          "legendFormat": "{{app_id}} / executor {{executor_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 50
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Spark filesystem file write bytes",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "spark_executor_filesystem_file_write_bytes",
+          "legendFormat": "{{app_id}} / executor {{executor_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 50
+      }
     }
   ]
 }

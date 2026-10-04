@@ -1,0 +1,21 @@
+mappings:
+  - match: "spark.*.*.executor.recordsRead"
+    name: "spark_executor_records_read_count"
+    labels:
+      app_id: "$1"
+      executor_id: "$2"
+  - match: "spark.*.*.executor.recordsWritten"
+    name: "spark_executor_records_written_count"
+    labels:
+      app_id: "$1"
+      executor_id: "$2"
+  - match: "spark.*.*.executor.filesystem.file.read_bytes"
+    name: "spark_executor_filesystem_file_read_bytes"
+    labels:
+      app_id: "$1"
+      executor_id: "$2"
+  - match: "spark.*.*.executor.filesystem.file.write_bytes"
+    name: "spark_executor_filesystem_file_write_bytes"
+    labels:
+      app_id: "$1"
+      executor_id: "$2"

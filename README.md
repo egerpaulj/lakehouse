@@ -344,6 +344,20 @@ Use `--dry-run` to append to the catalog without deleting the source
 documents, and `--batch-limit N` to cap how many documents are processed in
 one run.
 
+### Books and files ingest jobs
+
+The `books_ingest_hourly` DAG
+([`airflow/dags/books_ingest_hourly.py`](/home/user/src/lakehouse/airflow/dags/books_ingest_hourly.py))
+runs `spark-apps/ingest_files.py` hourly to convert dropped-in files to
+Markdown and append them to Delta tables: one task parses books into
+per-chapter rows (`crawler.books_b0`), the other parses generic documents
+into one row per file (`crawler.documents_b0`). Conversion is handled by the
+[`book-parser`](/home/user/src/lakehouse/book_tools/book-parser/README.md)
+library, and folder scanning/archiving/repository logic by
+[`book-ingest`](/home/user/src/lakehouse/book_tools/book-ingest/README.md) —
+see those READMEs for supported file extensions and how to drop files into
+the inbox folders.
+
 
 ## Medallion: Bronze to Silver (responses_b0 -> responses_s0)
 

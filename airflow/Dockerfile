@@ -38,7 +38,25 @@ RUN python -m venv /opt/decorators-venv \
         pyspark==3.5.3 pandas pyarrow numpy grpcio grpcio-status googleapis-common-protos requests \
         llm-summary==0.6.1 llm-ner-nel==0.6.1 \
     && chown -R airflow /opt/decorators-venv
+COPY book_tools /tmp/book_tools
+RUN python -m venv /opt/books-venv \
+    && /opt/books-venv/bin/pip install --no-cache-dir \
+        pyspark==3.5.3 pandas pyarrow \
+        grpcio grpcio-status googleapis-common-protos \
+        /tmp/book_tools/book-parser /tmp/book_tools/book-ingest \
+    && rm -rf /tmp/book_tools \
+    && chown -R airflow /opt/books-venv
 COPY lakehouse_data/src /opt/lakehouse_data/src
 COPY airflow/dags /opt/airflow/dags
 COPY spark-apps /opt/spark-apps
+# Pre-create the inbox tree (with its processed/failed subfolders) owned by
+# airflow so a fresh airflow-data volume doesn't end up with root-owned
+# directories (e.g. from `docker cp` creating missing parent paths as root),
+# which would block FileArchiver from moving ingested files.
+RUN mkdir -p \
+        /opt/airflow/data/books/inbox/processed \
+        /opt/airflow/data/books/inbox/failed \
+        /opt/airflow/data/files/inbox/processed \
+        /opt/airflow/data/files/inbox/failed \
+    && chown -R airflow /opt/airflow/data
 USER airflow

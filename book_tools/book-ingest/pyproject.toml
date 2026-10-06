@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "book-ingest"
+version = "0.1.0"
+description = "Ingest folders of books/documents into Delta tables via Spark Connect"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Paul Eger" }]
+dependencies = [
+    "book-parser>=0.1.0,<0.2",
+    "pyspark>=3.5,<4.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9", "ruff>=0.6,<1.0"]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 79
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

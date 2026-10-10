@@ -3,7 +3,8 @@
 # Add or remove entries to add/remove scheduled sync jobs; no code changes
 # needed. Required keys: name, mongo_database, mongo_collection,
 # catalog_database, catalog_table, schedule. Optional keys: mongo_uri
-# (defaults to mongodb://mongo:27017 or $MONGO_URI), batch_limit, dry_run.
+# (defaults to mongodb://mongo:27017 or $MONGO_URI), batch_limit, dry_run,
+# and partition_timestamp_column (derive year/month and partition by both).
 jobs:
   - name: crawler_articles
     mongo_uri: mongodb://mongodb:27017
@@ -11,4 +12,12 @@ jobs:
     mongo_collection: crawler_responses_datalake
     catalog_database: crawler
     catalog_table: responses_b0
+    schedule: "@hourly"
+  - name: stock_data
+    mongo_uri: mongodb://mongodb:27017
+    mongo_database: Crawler
+    mongo_collection: stockdata
+    catalog_database: crawler
+    catalog_table: stock_data
+    partition_timestamp_column: Timestamp
     schedule: "@hourly"

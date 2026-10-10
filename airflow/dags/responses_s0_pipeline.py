@@ -1,12 +1,12 @@
 """Generate independent bronze -> silver Airflow DAGs per configured pipeline.
 
-Per pipeline entry in ``responses_s0_pipeline.yaml`` four DAGs are created:
+Configured jobs in each ``responses_s0_pipeline.yaml`` entry become DAGs:
 
 * ``responses_s0_<name>_cdf``       - Delta CDF stream from b0 into s0
 * ``responses_s0_<name>_summary``   - llm-summary -> ``summary``
 * ``responses_s0_<name>_ner_nel``   - llm-ner-nel -> ``ner_nel`` (JSON)
 * ``responses_s0_<name>_embedding`` - embedding API -> ``text_embedding`` and
-  ``summary_embedding`` (only rows that already have a summary)
+  ``summary_embedding`` (when a summary exists)
 
 The DAGs are not chained; each has its own schedule, pause state and limit.
 Every decorator only processes rows that are still missing its value, so they
@@ -95,5 +95,7 @@ def create_dag(p: dict, job: str) -> DAG:
 
 for pipeline in load_pipelines():
     for job_name in JOBS:
+        if job_name not in pipeline:
+            continue
         dag_obj = create_dag(pipeline, job_name)
         globals()[dag_obj.dag_id] = dag_obj

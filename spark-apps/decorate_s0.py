@@ -5,7 +5,7 @@ Decorators (select with --decorator):
 * summary     - summarize ``text`` with llm-summary        -> ``summary``
 * ner_nel     - NER/NEL with llm-ner-nel, stored as JSON   -> ``ner_nel``
 * embeddings  - vectors from the embedding API (BGE-M3)    -> ``text_embedding``,
-                                                              ``summary_embedding``
+                                                              ``summary_embedding`` when a summary exists
 
 Each run decorates up to ``--limit`` rows that are still missing the value, so
 runs are idempotent and failed rows are retried on the next run. The LLM
@@ -122,10 +122,9 @@ BUILDERS = {"summary": build_summary, "ner_nel": build_ner_nel, "embeddings": bu
 PENDING = {
     "summary": ("summary IS NULL", ["text"]),
     "ner_nel": ("ner_nel IS NULL", ["text"]),
-    # Embeddings are only computed for rows that already have a summary.
     "embeddings": (
-        "summary IS NOT NULL AND summary <> '' AND `{text}` IS NOT NULL AND `{text}` <> '' "
-        "AND (text_embedding IS NULL OR summary_embedding IS NULL)",
+        "((`{text}` IS NOT NULL AND `{text}` <> '' AND text_embedding IS NULL) "
+        "OR (summary IS NOT NULL AND summary <> '' AND summary_embedding IS NULL))",
         ["text", "summary", "text_embedding", "summary_embedding"],
     ),
 }

@@ -58,6 +58,11 @@ def parse_args(argv=None) -> argparse.Namespace:
         help="Optional cap on the number of documents processed in one run",
     )
     parser.add_argument(
+        "--partition-timestamp-column",
+        default=None,
+        help="Derive year/month columns from this timestamp field and partition the Delta table by them",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Read and catalog documents but skip deleting them from MongoDB",
@@ -114,6 +119,13 @@ def main(argv=None) -> None:
         if args.batch_limit:
             read_df = read_df.limit(args.batch_limit)
 
+        if args.partition_timestamp_column:
+            timestamp = F.to_timestamp(F.col(args.partition_timestamp_column))
+            read_df = (
+                read_df.withColumn("year", F.year(timestamp))
+                .withColumn("month", F.month(timestamp))
+            )
+
         read_df = read_df.withColumn("_synced_at", F.current_timestamp()).cache()
         total = read_df.count()
         if total == 0:
@@ -132,10 +144,13 @@ def main(argv=None) -> None:
         source_ids = [row["id"] for row in read_df.select(F.col("_id").alias("id")).collect()]
 
         full_table_name = f"spark_catalog.{args.catalog_database}.{table_name}"
+        writer = read_df.write.format("delta")
+        if args.partition_timestamp_column:
+            writer = writer.partitionBy("year", "month")
         if spark.catalog.tableExists(full_table_name):
-            read_df.write.format("delta").mode("append").saveAsTable(full_table_name)
+            writer.mode("append").saveAsTable(full_table_name)
         else:
-            read_df.write.format("delta").mode("overwrite").saveAsTable(full_table_name)
+            writer.mode("overwrite").saveAsTable(full_table_name)
         # Change Data Feed lets downstream jobs (e.g. b0 -> s0) stream changes.
         spark.sql(
             f"ALTER TABLE {full_table_name} "

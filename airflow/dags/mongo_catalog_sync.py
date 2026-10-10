@@ -37,6 +37,8 @@ def build_spark_submit_command(job: dict) -> str:
         args += ["--mongo-uri", job["mongo_uri"]]
     if job.get("batch_limit"):
         args += ["--batch-limit", str(job["batch_limit"])]
+    if job.get("partition_timestamp_column"):
+        args += ["--partition-timestamp-column", job["partition_timestamp_column"]]
     if job.get("dry_run"):
         args += ["--dry-run"]
 

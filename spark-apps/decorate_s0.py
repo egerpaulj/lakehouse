@@ -4,8 +4,9 @@ Decorators (select with --decorator):
 
 * summary     - summarize ``text`` with llm-summary        -> ``summary``
 * ner_nel     - NER/NEL with llm-ner-nel, stored as JSON   -> ``ner_nel``
-* embeddings  - vectors from the embedding API (BGE-M3)    -> ``text_embedding``,
-                                                              ``summary_embedding`` when a summary exists
+* embeddings  - dense + sparse vectors from the embedding API (BGE-M3, one call)
+                                                          -> ``text_embedding_dense``/``_sparse``,
+                                                             ``summary_embedding_dense`` (summary: dense only)
 
 Each run decorates up to ``--limit`` rows that are still missing the value, so
 runs are idempotent and failed rows are retried on the next run. The LLM
@@ -20,11 +21,17 @@ import sys
 import time
 
 from pyspark.sql import SparkSession
-from pyspark.sql.types import ArrayType, FloatType, StringType, StructField, StructType
+from pyspark.sql.types import ArrayType, FloatType, MapType, StringType, StructField, StructType
 
 from delta_streaming.metrics import StatsdMetrics
 
 logger = logging.getLogger("decorate_s0")
+
+EMBEDDING_COLUMNS = {
+    "text_embedding_dense": ArrayType(FloatType()),
+    "text_embedding_sparse": MapType(StringType(), FloatType()),
+    "summary_embedding_dense": ArrayType(FloatType()),
+}
 
 DECORATORS = ("summary", "ner_nel", "embeddings")
 
@@ -91,29 +98,26 @@ def build_embeddings(args):
             timeout=300,
         )
         response.raise_for_status()
-        return response.json()["embeddings"]
+        body = response.json()
+        return body["embeddings"], body["sparse_embeddings"]
 
     def run(rows):
         # Only compute vectors that are missing; keep existing ones.
         todo = []
         for i, r in enumerate(rows):
-            if r["text_embedding"] is None and r["text"]:
-                todo.append((i, "text_embedding", r["text"]))
-            if r["summary_embedding"] is None and r["summary"]:
-                todo.append((i, "summary_embedding", r["summary"]))
-        vectors = encode([t[2] for t in todo]) if todo else []
-        out = [
-            {"text_embedding": r["text_embedding"], "summary_embedding": r["summary_embedding"]}
-            for r in rows
-        ]
-        for (i, column, _), vector in zip(todo, vectors):
-            out[i][column] = vector
+            if r["text"] and (r["text_embedding_dense"] is None or r["text_embedding_sparse"] is None):
+                todo.append((i, "text", r["text"]))
+            if r["summary"] and r["summary_embedding_dense"] is None:
+                todo.append((i, "summary", r["summary"]))
+        dense, sparse = encode([t[2] for t in todo]) if todo else ([], [])
+        out = [{name: r[name] for name in EMBEDDING_COLUMNS} for r in rows]
+        for (i, prefix, _), d, s in zip(todo, dense, sparse):
+            out[i][f"{prefix}_embedding_dense"] = d
+            if prefix == "text":
+                out[i]["text_embedding_sparse"] = s
         return out
 
-    vector = ArrayType(FloatType())
-    return run, StructType(
-        [StructField("text_embedding", vector), StructField("summary_embedding", vector)]
-    )
+    return run, StructType([StructField(name, dtype) for name, dtype in EMBEDDING_COLUMNS.items()])
 
 
 BUILDERS = {"summary": build_summary, "ner_nel": build_ner_nel, "embeddings": build_embeddings}
@@ -123,9 +127,11 @@ PENDING = {
     "summary": ("summary IS NULL", ["text"]),
     "ner_nel": ("ner_nel IS NULL", ["text"]),
     "embeddings": (
-        "((`{text}` IS NOT NULL AND `{text}` <> '' AND text_embedding IS NULL) "
-        "OR (summary IS NOT NULL AND summary <> '' AND summary_embedding IS NULL))",
-        ["text", "summary", "text_embedding", "summary_embedding"],
+        "((`{text}` IS NOT NULL AND `{text}` <> '' "
+        "AND (text_embedding_dense IS NULL OR text_embedding_sparse IS NULL)) "
+        "OR (summary IS NOT NULL AND summary <> '' "
+        "AND summary_embedding_dense IS NULL))",
+        ["text", "summary", *EMBEDDING_COLUMNS],
     ),
 }
 
@@ -180,6 +186,13 @@ def main(argv=None) -> None:
         .getOrCreate()
     )
     try:
+        if args.decorator == "embeddings":
+            existing = {c.lower() for c in spark.table(args.table).columns}
+            missing = [
+                f"`{n}` {t.simpleString()}" for n, t in EMBEDDING_COLUMNS.items() if n not in existing
+            ]
+            if missing:
+                spark.sql(f"ALTER TABLE {args.table} ADD COLUMNS ({', '.join(missing)})")
         text_filter = f"`{args.text_column}` IS NOT NULL AND `{args.text_column}` <> ''"
         where = condition if args.decorator == "embeddings" else f"({condition}) AND {text_filter}"
         pending = [

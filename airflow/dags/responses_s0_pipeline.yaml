@@ -5,8 +5,8 @@
 #   responses_s0_<name>_cdf        CDF stream source_table -> target_table
 #   responses_s0_<name>_summary    llm-summary                -> summary
 #   responses_s0_<name>_ner_nel    llm-ner-nel                -> ner_nel
-#   responses_s0_<name>_embedding  embedding API (BGE-M3)     -> text_embedding,
-#                                  summary_embedding (when a summary exists)
+#   responses_s0_<name>_embedding  embedding API (BGE-M3)     -> text_embedding_dense|_sparse,
+#                                  summary_embedding_dense (when a summary exists)
 #
 # Common keys: name, source_table, target_table, checkpoint_location,
 # text_column, merge_key, ollama_host.

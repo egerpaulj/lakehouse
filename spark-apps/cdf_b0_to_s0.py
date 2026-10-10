@@ -1,7 +1,7 @@
 """Stream Delta Change Data Feed changes from the bronze (b0) table to silver (s0).
 
 On the first run the s0 table is created from a snapshot of b0, extended with
-the decorator columns (summary, ner_nel, text_embedding, summary_embedding).
+the decorator columns (summary, ner_nel, text_embedding_dense/_sparse, summary_embedding_dense).
 Afterwards the Change Data Feed of b0 is merged into s0 by key. Only the b0
 columns are written, so values added by the decorator jobs are preserved.
 Columns named like the decorator columns are never copied from b0.
@@ -29,8 +29,9 @@ from delta_streaming import (
 DECORATOR_COLUMNS = {
     "summary": "string",
     "ner_nel": "string",
-    "text_embedding": "array<float>",
-    "summary_embedding": "array<float>",
+    "text_embedding_dense": "array<float>",
+    "text_embedding_sparse": "map<string,float>",
+    "summary_embedding_dense": "array<float>",
 }
 
 

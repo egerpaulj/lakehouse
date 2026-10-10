@@ -366,7 +366,7 @@ The crawler data follows a medallion layout in the Delta catalog:
 | Layer | Table | Content | Produced by |
 |-------|-------|---------|-------------|
 | Bronze (b0) | `crawler.responses_b0` | Raw crawler documents, appended as-is from MongoDB (with `_synced_at`). Change Data Feed is enabled. | `mongo_catalog_sync_crawler_articles` DAG |
-| Silver (s0) | `crawler.responses_s0` | Same rows, kept in sync with b0 through its Change Data Feed, **decorated** with `summary`, `ner_nel`, `text_embedding`, `summary_embedding`. | four independent `responses_s0_crawler_responses_*` DAGs |
+| Silver (s0) | `crawler.responses_s0` | Same rows, kept in sync with b0 through its Change Data Feed, **decorated** with `summary`, `ner_nel`, `text_embedding_dense`/`_sparse`, `summary_embedding_dense` (summary: dense only). | four independent `responses_s0_crawler_responses_*` DAGs |
 
 ```mermaid
 flowchart LR
@@ -392,7 +392,7 @@ flowchart LR
     s0 -->|"rows with a summary"| emb["embedding DAG"]
     emb -->|"POST /embed"| api
     models -->|"loaded at start"| api
-    emb -->|"text_embedding, summary_embedding"| s0
+    emb -->|"text/summary embeddings (_dense, _sparse)"| s0
 ```
 
 The DAG factory `airflow/dags/responses_s0_pipeline.py` creates, per entry in
@@ -442,8 +442,9 @@ with Airflow.
    JSON in the string column `ner_nel`. `ner_nel.model` and `ner_nel.strategy` are
    configurable.
 3. **embedding** - calls the separate **embedding API** (`embedding_api/`, Compose service
-   `embedding-api`) to embed `text` and `summary` into the `array<float>` columns
-   `text_embedding` and `summary_embedding`. Only rows that already have a
+   `embedding-api`) to embed `text` and `summary` in one BGE-M3 call into dense (`array<float>`) and sparse
+   (`map<string,float>`, token id -> weight) columns `text_embedding_dense`/`_sparse` and
+   `summary_embedding_dense` (summary: dense only) (missing columns are added to existing s0 tables). Only rows that already have a
    `summary` are embedded, so run it after the summary job. `embeddings.api_url` is configurable.
 
 ### Metrics
@@ -458,6 +459,8 @@ All four jobs report to the Grafana **Delta streaming** dashboard (pick the stre
 `embedding_api/` is a small FastAPI service wrapping `BGEM3Embedder` (BAAI/bge-m3
 dense vectors, adapted from
 [vespa_eval_framework](https://github.com/egerpaulj/vespa_eval_framework/blob/main/src/embeddings.py)).
+
+
 The Spark/Airflow containers carry no torch/model dependencies. The model is
 downloaded **once, at image build time**, into its own cached Docker layer
 (`/models/BAAI--bge-m3`), so container starts never download it and need no internet
@@ -470,7 +473,7 @@ at start.
 docker compose up -d --build embedding-api
 docker compose exec airflow curl -s http://embedding-api:8000/health
 docker compose exec airflow curl -s -X POST http://embedding-api:8000/embed -H 'content-type: application/json' \
-  -d '{"texts": ["hello world"]}'    # {"model": ..., "dimension": 1024, "embeddings": [[...]]}
+  -d '{"texts": ["hello world"]}'    # {"model": ..., "dimension": 1024, "embeddings": [[...]], "sparse_embeddings": [{...}]}
 ```
 
 `POST /embed` takes `{"texts": [...]}` (max 64 per request) and returns one vector per
@@ -480,6 +483,19 @@ The summarize and ner_nel decorators assume an Ollama instance is reachable at
 `ollama_host` (default `http://ollama:11434`, not part of this Compose stack) with
 the configured models pulled, e.g. `ollama pull gemma3:12b`. Use
 `http://host.docker.internal:11434` for an Ollama running on the Docker host.
+
+
+## How does sparse differ from a dense embedding?
+
+| Property | `lexical_weights` | `dense_vecs` |
+|---|---|---|
+| Representation | Dictionary of token IDs and weights | Fixed-length numerical vector |
+| Dimensions | Variable number of nonzero entries | Fixed dimensionality |
+| Main signal | Weighted lexical overlap | Semantic relationships |
+| Similarity | Sparse dot product | Usually cosine similarity or dot product |
+| Interpretability | Token-level weights are inspectable | Individual dimensions usually lack direct meaning |
+
+> **In short:** `lexical_weights` tells you which token IDs the model emphasizes and by how much. It provides a learned sparse representation that is particularly useful for keyword-sensitive retrieval.
 
 Run a decorator manually:
 

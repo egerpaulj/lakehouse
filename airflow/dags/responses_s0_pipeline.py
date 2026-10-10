@@ -5,8 +5,8 @@ Configured jobs in each ``responses_s0_pipeline.yaml`` entry become DAGs:
 * ``responses_s0_<name>_cdf``       - Delta CDF stream from b0 into s0
 * ``responses_s0_<name>_summary``   - llm-summary -> ``summary``
 * ``responses_s0_<name>_ner_nel``   - llm-ner-nel -> ``ner_nel`` (JSON)
-* ``responses_s0_<name>_embedding`` - embedding API -> ``text_embedding`` and
-  ``summary_embedding`` (when a summary exists)
+* ``responses_s0_<name>_embedding`` - embedding API -> ``text_embedding_dense``/``_sparse``
+  and ``summary_embedding_dense`` (when a summary exists)
 
 The DAGs are not chained; each has its own schedule, pause state and limit.
 Every decorator only processes rows that are still missing its value, so they

@@ -7,7 +7,7 @@ with a one-time model download into a persistent directory.
 
 import logging
 import os
-from typing import List
+from typing import Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +47,17 @@ class BGEM3Embedder:
         self.model = BGEM3FlagModel(model_name)
         self.provider = "flag"
 
-    def encode(self, texts: List[str]) -> List[List[float]]:
-        vector_data = self.model.encode(
+    def encode(self, texts: List[str]) -> Tuple[List[List[float]], List[Dict[str, float]]]:
+        """Return (dense vectors, sparse lexical weights {token_id: weight}) in one pass."""
+        output = self.model.encode(
             texts,
             return_dense=True,
-            return_sparse=False,
+            return_sparse=True,
             return_colbert_vecs=False,
-        )["dense_vecs"]
-        return [vec.tolist() for vec in vector_data]
+        )
+        dense = [vec.tolist() for vec in output["dense_vecs"]]
+        sparse = [
+            {str(token): float(weight) for token, weight in weights.items()}
+            for weights in output["lexical_weights"]
+        ]
+        return dense, sparse

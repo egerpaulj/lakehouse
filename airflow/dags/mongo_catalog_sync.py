@@ -43,6 +43,8 @@ def build_spark_submit_command(job: dict) -> str:
         args += ["--upsert-key", job["upsert_key"]]
     if job.get("hash_exclude_columns"):
         args += ["--hash-exclude-columns", ",".join(job["hash_exclude_columns"])]
+    if job.get("delete_synced"):
+        args += ["--delete-synced"]
     if job.get("json_columns"):
         args += ["--json-columns", ",".join(job["json_columns"])]
     if job.get("dry_run"):

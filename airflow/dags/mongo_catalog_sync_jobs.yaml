@@ -7,7 +7,8 @@
 # partition_timestamp_column (derive year/month and partition by both),
 # upsert_key (additive hash-based merge on this column; nothing is deleted
 # from MongoDB or the target), hash_exclude_columns (ignored in the hash) and
-# json_columns (stored as JSON strings, for free-form maps).
+# json_columns (stored as JSON strings, for free-form maps) and delete_synced
+# (with upsert_key: delete source documents after they are merged).
 jobs:
   - name: crawler_articles
     mongo_uri: mongodb://mongodb:27017
@@ -33,4 +34,14 @@ jobs:
     upsert_key: Code
     hash_exclude_columns: [LastCrawled, Created, Updated]
     json_columns: [Unmapped]
+    schedule: "@hourly"
+  - name: shab_publications
+    mongo_uri: mongodb://mongodb:27017
+    mongo_database: Crawler
+    mongo_collection: shab_publications
+    catalog_database: crawler
+    catalog_table: shab_publications
+    upsert_key: _id
+    hash_exclude_columns: [Timestamp, Created, Updated]
+    delete_synced: true
     schedule: "@hourly"

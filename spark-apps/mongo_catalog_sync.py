@@ -20,12 +20,13 @@ Processing steps, per run:
 import argparse
 import os
 import sys
+import uuid
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import ArrayType, NullType, StringType, StructField, StructType
 
-from bson import ObjectId
+from bson import Binary, ObjectId
 from pymongo import MongoClient
 
 
@@ -74,6 +75,11 @@ def parse_args(argv=None) -> argparse.Namespace:
         "--hash-exclude-columns",
         default="",
         help="Comma-separated columns ignored when computing the content hash (e.g. timestamps)",
+    )
+    parser.add_argument(
+        "--delete-synced",
+        action="store_true",
+        help="With --upsert-key: also delete the source documents from MongoDB once merged (move semantics)",
     )
     parser.add_argument(
         "--json-columns",
@@ -153,10 +159,23 @@ def upsert_documents(spark, df, full_table_name: str, key: str, exclude: list) -
 def delete_synced_documents(mongo_uri: str, mongo_database: str, mongo_collection: str, ids: list) -> int:
     """Delete the given MongoDB _id values now that they are in the catalog."""
 
-    client = MongoClient(mongo_uri)
+    client = MongoClient(mongo_uri, uuidRepresentation="standard")
     try:
         collection = client[mongo_database][mongo_collection]
-        string_ids = [str(oid) for oid in ids]
+        # _id may be a string, an ObjectId-like hex, or (for Guid keys) raw
+        # binary bytes whose subtype (3 legacy / 4 standard) is not exposed by
+        # the connector, so match both subtypes.
+        string_ids = []
+        for oid in ids:
+            if isinstance(oid, (bytes, bytearray)):
+                string_ids.append(Binary(bytes(oid), 4))
+                string_ids.append(Binary(bytes(oid), 3))
+                continue
+            string_ids.append(str(oid))
+            try:
+                string_ids.append(uuid.UUID(str(oid)))
+            except ValueError:
+                pass
         # Chunk deletes to keep the $in filter list a reasonable size.
         deleted = 0
         chunk_size = 1000
@@ -219,13 +238,20 @@ def main(argv=None) -> None:
         full_table_name = f"spark_catalog.{args.catalog_database}.{table_name}"
         if args.upsert_key:
             exclude = [c.strip() for c in args.hash_exclude_columns.split(",") if c.strip()]
+            source_ids = [row["id"] for row in read_df.select(F.col("_id").alias("id")).collect()]
             upsert_documents(spark, read_df, full_table_name, args.upsert_key, exclude)
             spark.sql(
                 f"ALTER TABLE {full_table_name} "
                 "SET TBLPROPERTIES (delta.enableChangeDataFeed = true)"
             )
-            print(f"Upserted {total} document(s) from {args.mongo_collection} into {full_table_name}; MongoDB left untouched")
             read_df.unpersist()
+            if args.delete_synced and not args.dry_run:
+                deleted = delete_synced_documents(
+                    args.mongo_uri, args.mongo_database, args.mongo_collection, source_ids
+                )
+                print(f"Upserted {total} document(s) into {full_table_name}; deleted {deleted} from MongoDB")
+            else:
+                print(f"Upserted {total} document(s) from {args.mongo_collection} into {full_table_name}; MongoDB left untouched")
             return
 
         # The connector infers "_id" as a plain hex string by default (not a

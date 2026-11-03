@@ -39,6 +39,12 @@ def build_spark_submit_command(job: dict) -> str:
         args += ["--batch-limit", str(job["batch_limit"])]
     if job.get("partition_timestamp_column"):
         args += ["--partition-timestamp-column", job["partition_timestamp_column"]]
+    if job.get("upsert_key"):
+        args += ["--upsert-key", job["upsert_key"]]
+    if job.get("hash_exclude_columns"):
+        args += ["--hash-exclude-columns", ",".join(job["hash_exclude_columns"])]
+    if job.get("json_columns"):
+        args += ["--json-columns", ",".join(job["json_columns"])]
     if job.get("dry_run"):
         args += ["--dry-run"]
 

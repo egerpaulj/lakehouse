@@ -10,6 +10,8 @@ Processing steps, per run:
 2. Read all documents currently in the configured MongoDB collection.
 3. Append the documents to the target Delta catalog table (created if
    missing, otherwise appended to).
+   With --upsert-key the run is instead an additive, hash-based merge and
+   nothing is deleted anywhere.
 4. Delete the documents that were successfully added from MongoDB, using the
    exact `_id` values that were read, so documents inserted after the read
    started are left untouched for the next run.
@@ -21,7 +23,7 @@ import sys
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.types import NullType
+from pyspark.sql.types import ArrayType, NullType, StringType, StructField, StructType
 
 from bson import ObjectId
 from pymongo import MongoClient
@@ -63,6 +65,23 @@ def parse_args(argv=None) -> argparse.Namespace:
         help="Derive year/month columns from this timestamp field and partition the Delta table by them",
     )
     parser.add_argument(
+        "--upsert-key",
+        default=None,
+        help="Additive upsert mode: merge on this column, update rows only when the content "
+        "hash changed, and never delete from MongoDB or the target table",
+    )
+    parser.add_argument(
+        "--hash-exclude-columns",
+        default="",
+        help="Comma-separated columns ignored when computing the content hash (e.g. timestamps)",
+    )
+    parser.add_argument(
+        "--json-columns",
+        default="",
+        help="Comma-separated columns stored as JSON strings (free-form maps whose keys are "
+        "not valid Delta column names or vary between documents)",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Read and catalog documents but skip deleting them from MongoDB",
@@ -74,6 +93,60 @@ def ensure_catalog_database(spark: SparkSession, catalog_database: str, warehous
     spark.sql(
         f"CREATE DATABASE IF NOT EXISTS {catalog_database} "
         f"LOCATION '{warehouse_root}/{catalog_database}'"
+    )
+
+
+def replace_void(dtype):
+    """Return dtype with NullType (all-null inferred fields) replaced by string, recursively."""
+
+    if isinstance(dtype, NullType):
+        return StringType()
+    if isinstance(dtype, StructType):
+        return StructType([StructField(f.name, replace_void(f.dataType), True) for f in dtype.fields])
+    if isinstance(dtype, ArrayType):
+        return ArrayType(replace_void(dtype.elementType), True)
+    return dtype
+
+
+def upsert_documents(spark, df, full_table_name: str, key: str, exclude: list) -> None:
+    """Additive merge: insert new keys, update only rows whose content hash changed.
+
+    _last_processed_at is refreshed for every processed row; _last_updated_at
+    only when the row was inserted or its content actually changed.
+    """
+
+    for field in df.schema.fields:
+        fixed = replace_void(field.dataType)
+        if fixed != field.dataType:
+            df = df.withColumn(field.name, F.col(field.name).cast(fixed))
+
+    skip = set(exclude) | {"_synced_at", key}
+    hash_cols = sorted(c for c in df.columns if c not in skip)
+    df = (
+        df.dropDuplicates([key])
+        .withColumn(
+            "_content_hash",
+            F.sha2(F.to_json(F.struct(F.col(key), *[F.col(c) for c in hash_cols])), 256),
+        )
+        .withColumn("_last_processed_at", F.current_timestamp())
+        .withColumn("_last_updated_at", F.current_timestamp())
+    )
+    if not spark.catalog.tableExists(full_table_name):
+        df.write.format("delta").mode("overwrite").saveAsTable(full_table_name)
+        print(f"Created {full_table_name} with {df.count()} document(s)")
+        return
+
+    spark.conf.set("spark.databricks.delta.schema.autoMerge.enabled", "true")
+    df.createOrReplaceTempView("_mongo_upsert_source")
+    spark.sql(
+        f"""
+        MERGE INTO {full_table_name} AS t
+        USING _mongo_upsert_source AS s
+        ON t.`{key}` <=> s.`{key}`
+        WHEN MATCHED AND NOT (t._content_hash <=> s._content_hash) THEN UPDATE SET *
+        WHEN MATCHED THEN UPDATE SET t._last_processed_at = s._last_processed_at
+        WHEN NOT MATCHED THEN INSERT *
+        """
     )
 
 
@@ -126,6 +199,10 @@ def main(argv=None) -> None:
                 .withColumn("month", F.month(timestamp))
             )
 
+        for column in (c.strip() for c in args.json_columns.split(",") if c.strip()):
+            if column in read_df.columns:
+                read_df = read_df.withColumn(column, F.to_json(F.col(column)))
+
         read_df = read_df.withColumn("_synced_at", F.current_timestamp()).cache()
         total = read_df.count()
         if total == 0:
@@ -139,11 +216,22 @@ def main(argv=None) -> None:
                     F.lit(None).cast("string")
                 )
 
+        full_table_name = f"spark_catalog.{args.catalog_database}.{table_name}"
+        if args.upsert_key:
+            exclude = [c.strip() for c in args.hash_exclude_columns.split(",") if c.strip()]
+            upsert_documents(spark, read_df, full_table_name, args.upsert_key, exclude)
+            spark.sql(
+                f"ALTER TABLE {full_table_name} "
+                "SET TBLPROPERTIES (delta.enableChangeDataFeed = true)"
+            )
+            print(f"Upserted {total} document(s) from {args.mongo_collection} into {full_table_name}; MongoDB left untouched")
+            read_df.unpersist()
+            return
+
         # The connector infers "_id" as a plain hex string by default (not a
         # struct with an "oid" field), so read it directly.
         source_ids = [row["id"] for row in read_df.select(F.col("_id").alias("id")).collect()]
 
-        full_table_name = f"spark_catalog.{args.catalog_database}.{table_name}"
         writer = read_df.write.format("delta")
         if args.partition_timestamp_column:
             writer = writer.partitionBy("year", "month")

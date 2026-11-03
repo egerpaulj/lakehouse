@@ -9,10 +9,11 @@
 #                                  summary_embedding_dense (when a summary exists)
 #
 # Common keys: name, source_table, target_table, checkpoint_location,
-# text_column, merge_key, ollama_host.
+# text_column, merge_key.
 # Configure only the jobs required for a pipeline. Per-job keys (cdf, summary,
 # ner_nel, embedding): schedule, paused (default false), limit (rows per run),
-# and model/strategy (summary, ner_nel) or api_url (embedding).
+# and model/strategy/ollama_host (summary, ner_nel; defaults
+# http://ollama-summary:11434 and http://ollama-ner:11434) or api_url (embedding).
 pipelines:
   - name: crawler_responses
     source_table: crawler.responses_b0
@@ -20,19 +21,20 @@ pipelines:
     checkpoint_location: s3a://warehouse/checkpoints/crawler_responses_s0
     text_column: text
     merge_key: _id
-    ollama_host: http://ollama:11434
     cdf:
       schedule: "@hourly"
     summary:
       schedule: "@hourly"
       limit: 50
-      model: qwen3:8b
+      model: rnj-1:latest
       strategy: ollama
+      ollama_host: http://ollama-summary:11434
     ner_nel:
       schedule: "@hourly"
       limit: 50
       model: qwen3:14b
       strategy: ollama
+      ollama_host: http://ollama-ner:11434
     embedding:
       schedule: "@hourly"
       limit: 200
@@ -43,7 +45,6 @@ pipelines:
     checkpoint_location: s3a://warehouse/checkpoints/crawler_books_s0
     text_column: text
     merge_key: chapter_id
-    ollama_host: http://ollama:11434
     cdf:
       schedule: "@hourly"
     ner_nel:
@@ -51,6 +52,7 @@ pipelines:
       limit: 50
       model: qwen3:14b
       strategy: ollama
+      ollama_host: http://ollama-ner:11434
     embedding:
       schedule: "@hourly"
       limit: 200
@@ -61,7 +63,6 @@ pipelines:
     checkpoint_location: s3a://warehouse/checkpoints/crawler_documents_s0
     text_column: text
     merge_key: document_id
-    ollama_host: http://ollama:11434
     cdf:
       schedule: "@hourly"
     ner_nel:
@@ -69,6 +70,7 @@ pipelines:
       limit: 50
       model: qwen3:14b
       strategy: ollama
+      ollama_host: http://ollama-ner:11434
     embedding:
       schedule: "@hourly"
       limit: 200

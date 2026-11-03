@@ -46,8 +46,10 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=500, help="Max rows decorated per run")
     parser.add_argument("--batch-size", type=int, default=16, help="Rows merged per Delta commit")
     parser.add_argument("--model", default=env("DECORATOR_MODEL"), help="LLM model (summary / ner_nel)")
-    parser.add_argument("--strategy", default=env("DECORATOR_STRATEGY", "ollama"), help="LLM inference strategy")
-    parser.add_argument("--ollama-host", default=env("OLLAMA_HOST", "http://ollama:11434"))
+    parser.add_argument("--summary-strategy", default=env("SUMMARY_STRATEGY", "ollama"), help="Summary inference strategy")
+    parser.add_argument("--summary-ollama-host", default=env("SUMMARY_OLLAMA_HOST", "http://ollama-summary:11434"))
+    parser.add_argument("--ner-nel-strategy", default=env("NER_NEL_STRATEGY", "ollama"), help="NER/NEL inference strategy")
+    parser.add_argument("--ner-nel-ollama-host", default=env("NER_NEL_OLLAMA_HOST", "http://ollama-ner:11434"))
     parser.add_argument("--embedding-api-url", default=env("EMBEDDING_API_URL", "http://embedding-api:8000"))
     return parser.parse_args(argv)
 
@@ -60,7 +62,7 @@ def chunks(items: list, size: int):
 def build_summary(args):
     from llm_summary.inference_api.summary_inference import SummaryInferenceProvider
 
-    kwargs = {"strategy": args.strategy, "ollama_host": args.ollama_host}
+    kwargs = {"strategy": args.summary_strategy, "ollama_host": args.summary_ollama_host}
     if args.model:
         kwargs["model"] = args.model
     provider = SummaryInferenceProvider(**kwargs)
@@ -74,7 +76,7 @@ def build_summary(args):
 def build_ner_nel(args):
     from llm_ner_nel.inference_api.relationship_inference import RelationshipInferenceProvider
 
-    kwargs = {"strategy": args.strategy, "ollama_host": args.ollama_host}
+    kwargs = {"strategy": args.ner_nel_strategy, "ollama_host": args.ner_nel_ollama_host}
     if args.model:
         kwargs["model"] = args.model
     provider = RelationshipInferenceProvider(**kwargs)

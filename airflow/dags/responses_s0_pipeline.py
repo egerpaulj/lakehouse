@@ -55,6 +55,12 @@ def cdf_command(p: dict) -> str:
     return command("PYTHONPATH=/opt/lakehouse_data/src python", "cdf_b0_to_s0.py", args)
 
 
+OLLAMA_HOSTS = {
+    "summary": "http://ollama-summary:11434",
+    "ner_nel": "http://ollama-ner:11434",
+}
+
+
 def decorator_command(p: dict, job: str) -> str:
     section = p.get(job) or {}
     args = [
@@ -69,8 +75,10 @@ def decorator_command(p: dict, job: str) -> str:
     else:
         if section.get("model"):
             args += ["--model", section["model"]]
-        args += ["--strategy", section.get("strategy", "ollama")]
-        args += ["--ollama-host", p.get("ollama_host", "http://ollama:11434")]
+        flag = DECORATOR_NAMES[job].replace("_", "-")
+        default_host = OLLAMA_HOSTS[job]
+        args += [f"--{flag}-strategy", section.get("strategy", "ollama")]
+        args += [f"--{flag}-ollama-host", section.get("ollama_host", default_host)]
     return command(
         f"PYTHONPATH=/opt/lakehouse_data/src {DECORATOR_PYTHON}", "decorate_s0.py", args
     )

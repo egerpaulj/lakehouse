@@ -64,7 +64,7 @@ services:
       - development_network
 
   minio-init:
-    image: minio/mc:latest
+    image: pgsty/mc:RELEASE.2026-10-26T00-00-00Z
     depends_on:
       minio:
         condition: service_healthy

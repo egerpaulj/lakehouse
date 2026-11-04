@@ -410,8 +410,9 @@ triggered and retried on its own:
 Each job has its own `schedule`, `limit` (rows per run), `paused` flag (create the DAG
 paused) and model/strategy/api settings in the YAML. Because every decorator only
 selects rows still missing its value, the jobs can run in any order; rows that arrive
-later are picked up by the next run. Note Airflow uses the `SequentialExecutor` here,
-so only one task runs at a time across all DAGs.
+later are picked up by the next run. Airflow uses the `LocalExecutor`
+(up to `AIRFLOW__CORE__PARALLELISM` tasks at once), so long Spark tasks no longer block
+the scheduler.
 
 ### Bronze to Silver: Change Data Feed stream
 

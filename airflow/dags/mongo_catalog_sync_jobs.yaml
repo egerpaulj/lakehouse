@@ -23,7 +23,7 @@ jobs:
     mongo_collection: stockdata
     catalog_database: crawler
     catalog_table: stock_data
-    partition_timestamp_column: Timestamp
+    partition_timestamp_column: Created
     schedule: "@hourly"
   - name: instruments
     mongo_uri: mongodb://mongodb:27017

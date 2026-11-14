@@ -23,8 +23,10 @@ jobs:
     mongo_collection: stockdata
     catalog_database: crawler
     catalog_table: stock_data
-    partition_timestamp_column: Created
+    partition_timestamp_column: MarketDate
+    batch_limit: 5000000
     schedule: "@hourly"
+    delete_synced: true
   - name: instruments
     mongo_uri: mongodb://mongodb:27017
     mongo_database: Crawler
